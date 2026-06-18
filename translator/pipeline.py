@@ -19,6 +19,7 @@ from translator.cache import (
 from translator.config import Config
 from translator.models import ParsedIni, RawLine
 from translator.parser import assemble, parse
+from translator.versioning import bump_version
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
 
     # Apply cached translations immediately
     for entry in hits:
-        entry.translated = cache[entry.key or ""]["dst"]  # type: ignore[index]
+        entry.translated = cache[entry.key or ""]["dst"]
 
     # Translate only the new/changed entries
     if misses:
@@ -97,6 +98,17 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
 
     logger.info("Writing output to %s", config.output_path)
     assemble(parsed, config.output_path)
+
+    new_version = bump_version(
+        config.output_dir, config.version, config.target_lang_code
+    )
+    logger.info(
+        "Version bumped to %s (%s/%s)",
+        new_version,
+        config.version,
+        config.target_lang_code,
+    )
+
     return config.output_path
 
 

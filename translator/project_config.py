@@ -7,7 +7,7 @@ from typing import Any
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib  # type: ignore[no-reattr]
+    import tomli as tomllib
 
 _CONFIG_FILE = "verse-translator.toml"
 
@@ -29,4 +29,5 @@ def get_output_dir(config: dict[str, Any]) -> Path | None:
 
 
 def get_defaults(config: dict[str, Any]) -> dict[str, Any]:
-    return config.get("defaults", {})
+    result: dict[str, Any] = config.get("defaults", {})
+    return result
