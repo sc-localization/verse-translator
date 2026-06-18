@@ -1,0 +1,39 @@
+[project]
+name = "verse-translator"
+version = "0.1.0"
+description = "Star Citizen global.ini translation pipeline using Claude CLI"
+requires-python = ">=3.10"
+dependencies = [
+    "tomli>=2.4.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "mypy"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["translator"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "lefthook>=2.1.9",
+    "mypy>=2.1.0",
+    "pytest>=9.1.0",
+    "ruff>=0.15.18",
+]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint.per-file-ignores]
+"translator/pipeline.py" = ["E501"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

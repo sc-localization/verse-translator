@@ -1,0 +1,18 @@
+# verse-translator configuration
+# Copy this file to verse-translator.toml and adjust paths for your setup.
+# verse-translator.toml is gitignored — each contributor has their own.
+
+[output]
+# Where to write translated global.ini files.
+# Structure: {dir}/{version}/{lang_code}/global.ini
+# Point this at your local clone of sc-translations, or leave as-is to output locally.
+dir = "../sc-translations/translations"
+
+[defaults]
+backend = "claude"       # claude | gemini | codex | ollama | lmstudio
+version = "LIVE"         # LIVE | PTU | HOTFIX
+source_lang = "English"
+target_lang = "Russian"
+target_lang_code = "ru"
+batch_size = 50
+max_retries = 3

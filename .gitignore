@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.log
+output/
+temp/
+verse-translator.toml
+input/
