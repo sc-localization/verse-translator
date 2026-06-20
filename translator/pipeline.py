@@ -38,7 +38,7 @@ Rules:
 Proper nouns to keep untranslated (examples, not exhaustive):
 Locations: Lorville, Hurston, ArcCorp, Crusader, microTech, Stanton, Pyro, Magnus, Nyx, Orison, Area18, New Babbage, Port Tressler, Grim HEX, CRU-L1, HUR-L1, ARC-L1, MIC-L1, Everus Harbor, Baijini Point, Port Olisar, Delamar, Levski
 Ships: Cutlass, Hornet, Constellation, Freelancer, Caterpillar, Reclaimer, Hammerhead, Carrack, 890 Jump, Aurora, Avenger, Gladius, Arrow, Eclipse, Vanguard, Valkyrie, Prospector, Vulture
-Corporations: Hurston Dynamics, Crusader Industries, microTech, MISC, Anvil, Origin, RSI, Drake, Aegis, Esperia, Banu, Xi'an
+Corporations: Hurston Dynamics, Crusader Industries, microTech, MISC, Anvil, Origin, RSI, Drake, Aegis, Esperia, Banu, Xi'an, Sakura Sun, Covalex, Shubin, Rayari, Tumbril, Greycat, Consolidated Outland, Argo
 """
 
 
