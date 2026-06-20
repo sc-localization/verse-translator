@@ -34,6 +34,7 @@ Rules:
 - Keep the sci-fi tone and atmosphere of the original.
 - Preserve capitalisation style (ALL CAPS stays ALL CAPS, Title Case stays Title Case).
 - Proper nouns (locations, ships, corporations, star systems, people) must NEVER be translated — keep them exactly as written in English.
+- Abbreviations (ALL CAPS words of 5 characters or fewer, e.g. HUD, VTOL, SHD, ESP, EMP, SCU, UEC, aUEC) must NEVER be translated — keep them as-is.
 {glossary_section}"""
 
 _GLOSSARY_PATH = Path("glossary.txt")
