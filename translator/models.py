@@ -56,9 +56,15 @@ _VAR_RE = re.compile(
     r"|<[^>]+>)"  # <tag>
 )
 
+# Matches SC fluff data: sequences of decimal numbers separated by spaces
+_FLUFF_RE = re.compile(r"(\d+\.\d+\s+){4,}")
+
 
 def _is_translatable(value: str) -> bool:
     if not value.strip():
+        return False
+
+    if _FLUFF_RE.search(value):
         return False
 
     stripped = _VAR_RE.sub("", value).strip()
