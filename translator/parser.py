@@ -38,11 +38,7 @@ def _classify(raw: str) -> RawLine:
 
 
 def assemble(parsed: ParsedIni, output_path: Path) -> None:
-    """Write only translated key=value entries to disk."""
+    """Write all key=value entries: translated where available, original otherwise."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f"{line.key}={line.translated}"
-        for line in parsed.lines
-        if line.kind == LineKind.ENTRY and line.translated is not None
-    ]
+    lines = [line.output() for line in parsed.lines if line.kind == LineKind.ENTRY]
     output_path.write_text("\n".join(lines), encoding="utf-8")
