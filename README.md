@@ -27,13 +27,13 @@ On subsequent runs only new or changed lines are sent to the model — everythin
 
 ## Supported backends
 
-| Backend | Command used | Auth |
-|---|---|---|
-| `claude` | `claude --print "..."` | Claude account / Pro subscription |
-| `gemini` | `agy -p "..."` | Google account |
-| `codex` | `codex -q "..."` | OpenAI account |
-| `ollama` | `ollama run <model> "..."` | None — runs locally |
-| `lmstudio` | HTTP `localhost:1234` | None — runs locally |
+| Backend    | Command used               | Auth                              |
+| ---------- | -------------------------- | --------------------------------- |
+| `claude`   | `claude --print "..."`     | Claude account / Pro subscription |
+| `gemini`   | `agy -p "..."`             | Google account                    |
+| `codex`    | `codex -q "..."`           | OpenAI account                    |
+| `ollama`   | `ollama run <model> "..."` | None — runs locally               |
+| `lmstudio` | HTTP `localhost:1234`      | None — runs locally               |
 
 ## Setup
 
@@ -78,6 +78,27 @@ batch_size = 50
 ```
 
 CLI flags always override the config file.
+
+## Supported languages
+
+| `--target-lang-code` | `--target-lang` | Language             |
+| -------------------- | --------------- | -------------------- |
+| `ru`                 | `Russian`       | Русский              |
+| `zh`                 | `Chinese`       | Chinese (Simplified) |
+| `fr`                 | `French`        | French               |
+| `de`                 | `German`        | German               |
+| `it`                 | `Italian`       | Italian              |
+| `ja`                 | `Japanese`      | Japanese             |
+| `ko`                 | `Korean`        | 한국어 (Korean)      |
+| `pl`                 | `Polish`        | Polish               |
+| `pt`                 | `Portuguese`    | Portuguese           |
+| `es`                 | `Spanish`       | Spanish              |
+
+Translations are published to [sc-translations](https://github.com/sc-localization/sc-translations) and served via jsDelivr CDN:
+
+```
+https://cdn.jsdelivr.net/gh/sc-localization/sc-translations@main/translations/{VERSION}/{LANG}/global.ini
+```
 
 ## Usage
 
@@ -145,14 +166,14 @@ options:
 
 The pipeline instructs the model to leave game variables untouched:
 
-| Pattern | Example | Meaning |
-|---|---|---|
-| `~func()` | `~mission(foo)` | Game function call |
-| `@tag` | `@ui_label` | UI reference |
-| `%ls` | `%ls` | String placeholder |
-| `{0}` | `{1}` | Positional argument |
-| `\n` | `\n` | Newline escape |
-| `<tag>` | `<bold>` | Markup tag |
+| Pattern   | Example         | Meaning             |
+| --------- | --------------- | ------------------- |
+| `~func()` | `~mission(foo)` | Game function call  |
+| `@tag`    | `@ui_label`     | UI reference        |
+| `%ls`     | `%ls`           | String placeholder  |
+| `{0}`     | `{1}`           | Positional argument |
+| `\n`      | `\n`            | Newline escape      |
+| `<tag>`   | `<bold>`        | Markup tag          |
 
 Entries whose values consist entirely of variables are skipped and copied as-is.
 
@@ -160,6 +181,7 @@ Entries whose values consist entirely of variables are skipped and copied as-is.
 
 After each run a `.translation_cache.json` file is saved next to the output `global.ini`.
 On the next run:
+
 - unchanged lines → taken from cache, no AI call
 - new or changed lines → translated and cache updated
 
