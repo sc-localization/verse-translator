@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**verse-translator** — pipeline for translating Star Citizen `global.ini` (EN → RU) using Claude CLI (Haiku model via Pro subscription). Outputs ready-to-deploy translation files for **lingvo-injector** server.
+**verse-translator** — pipeline for translating Star Citizen `global.ini` using local LLMs (LM Studio / Ollama). Outputs ready-to-deploy translation files for **lingvo-injector** server.
 
 ## Commands
 
@@ -17,14 +17,14 @@ uv run pytest tests/             # Run tests
 ```
 global.ini (EN)
   → parser: split into batches
-  → claude CLI: translate each batch with SC glossary
+  → LM Studio / Ollama: translate each batch with SC glossary
   → assembler: merge back into global.ini (RU)
   → output: server/translations/{VERSION}/ru/global.ini
 ```
 
 ## Key Design Decisions
 
-- Uses `claude --model claude-haiku-4-5-20251001` subprocess calls (Pro subscription, no API billing)
+- Default backend: LM Studio with `qwen2.5-coder-14b-instruct`; Ollama as alternative
 - Preserves INI format: `key=value`, comments (`; ...`), empty lines
 - Game variables (`~mission()`, `@ui_`, `%ls`, etc.) must NOT be translated
 - SC glossary injected into every batch prompt

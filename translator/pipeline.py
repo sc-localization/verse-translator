@@ -79,12 +79,11 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     if misses:
         system_prompt = build_system_prompt(config)
         batches = make_batches(misses, config.batch_size)
-        done = 0
+        total_batches = len(batches)
 
         with tqdm(total=len(misses), unit="entry", desc="Translating") as bar:
             for batch_idx, batch in enumerate(batches):
                 values = [entry.value or "" for entry in batch]
-
                 translated = _translate_with_retry(
                     backend=backend,
                     values=values,
@@ -92,17 +91,16 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                     max_retries=config.max_retries,
                     retry_delay=config.retry_delay_seconds,
                     batch_idx=batch_idx,
-                    total_batches=len(batches),
+                    total_batches=total_batches,
                 )
-
                 for entry, dst in zip(batch, translated):
                     entry.translated = dst
                     if entry.key:
                         cache[entry.key] = {"src": entry.value or "", "dst": dst}
-
-                done += len(batch)
+                save_cache(cache_path, cache)
+                assemble(parsed, config.output_path)
                 bar.update(len(batch))
-                bar.set_postfix(batch=f"{batch_idx + 1}/{len(batches)}")
+                bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
 
     save_cache(cache_path, cache)
     logger.info("Cache saved to %s", cache_path)

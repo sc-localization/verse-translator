@@ -23,3 +23,7 @@ class TranslatorBackend(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
+
+    def context_length(self) -> int | None:
+        """Return model context window size in tokens, or None if unknown."""
+        return None

@@ -24,15 +24,30 @@ class LMStudioBackend(TranslatorBackend):
         self, model: str = "local-model", host: str = "localhost", port: int = 1234
     ) -> None:
         self.model = model
-        self._url = f"http://{host}:{port}/v1/chat/completions"
+        self._base_url = f"http://{host}:{port}"
+        self._url = f"{self._base_url}/v1/chat/completions"
 
     @property
     def name(self) -> str:
         return f"lmstudio/{self.model}"
 
+    def context_length(self) -> int | None:
+        try:
+            req = urllib.request.Request(f"{self._base_url}/v1/models")
+            with urllib.request.urlopen(req) as resp:
+                data = json.loads(resp.read())
+
+            for entry in data.get("data", []):
+                ctx = entry.get("context_length") or entry.get("max_context_length")
+                if ctx:
+                    return int(ctx)
+        except Exception:
+            pass
+
+        return None
+
     def translate_batch(self, values: list[str], system_prompt: str) -> list[str]:
         user_content = _USER_INSTRUCTION + json.dumps(values, ensure_ascii=False)
-
         body = json.dumps(
             {
                 "model": self.model,
@@ -53,12 +68,14 @@ class LMStudioBackend(TranslatorBackend):
             data = json.loads(resp.read())
 
         output: str = data["choices"][0]["message"]["content"]
+
         return _parse_json_response(output, expected_len=len(values))
 
 
 def _parse_json_response(output: str, expected_len: int) -> list[str]:
     start = output.find("[")
     end = output.rfind("]")
+
     if start == -1 or end == -1:
         raise ValueError(f"No JSON array found in response:\n{output[:500]}")
 
@@ -66,4 +83,5 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
 
     if len(parsed) != expected_len:
         raise ValueError(f"Expected {expected_len} translations, got {len(parsed)}")
+
     return parsed

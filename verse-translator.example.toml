@@ -9,10 +9,11 @@
 dir = "../sc-translations/translations"
 
 [defaults]
-backend = "claude"       # claude | gemini | codex | ollama | lmstudio
+backend = "lmstudio"     # ollama | lmstudio
+model = "qwen2.5-coder-14b-instruct"
 version = "LIVE"         # LIVE | PTU | HOTFIX
 source_lang = "English"
 target_lang = "Russian"
 target_lang_code = "ru"
-batch_size = 50
+batch_size = 50      # or 'auto' to detect from model context window
 max_retries = 3

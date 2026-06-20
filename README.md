@@ -27,13 +27,10 @@ On subsequent runs only new or changed lines are sent to the model — everythin
 
 ## Supported backends
 
-| Backend    | Command used               | Auth                              |
-| ---------- | -------------------------- | --------------------------------- |
-| `claude`   | `claude --print "..."`     | Claude account / Pro subscription |
-| `gemini`   | `agy -p "..."`             | Google account                    |
-| `codex`    | `codex -q "..."`           | OpenAI account                    |
-| `ollama`   | `ollama run <model> "..."` | None — runs locally               |
-| `lmstudio` | HTTP `localhost:1234`      | None — runs locally               |
+| Backend    | How it works               | Auth                |
+| ---------- | -------------------------- | ------------------- |
+| `lmstudio` | HTTP `localhost:1234`      | None — runs locally |
+| `ollama`   | `ollama run <model> "..."` | None — runs locally |
 
 ## Setup
 
@@ -48,13 +45,10 @@ uv sync
 cp verse-translator.example.toml verse-translator.toml
 ```
 
-Make sure the CLI tool you want to use is installed and available in `$PATH`:
+Make sure your local model server is running before starting:
 
-- **claude**: [Claude Code](https://claude.ai/code)
-- **gemini**: [agy CLI](https://antigravity.google/docs/cli-using)
-- **codex**: `npm install -g @openai/codex`
-- **ollama**: [ollama.com](https://ollama.com)
-- **lmstudio**: [lmstudio.ai](https://lmstudio.ai) — start the local server in the UI before running
+- **lmstudio**: [lmstudio.ai](https://lmstudio.ai) — load a model and start the local server in the UI (default port 1234)
+- **ollama**: [ollama.com](https://ollama.com) — `ollama pull qwen2.5:14b`
 
 ## Configuration
 
@@ -70,7 +64,8 @@ cp verse-translator.example.toml verse-translator.toml
 dir = "../sc-translations/translations"  # path to your local clone of sc-translations
 
 [defaults]
-backend = "claude"
+backend = "lmstudio"
+model = "qwen2.5-coder-14b-instruct"
 version = "LIVE"
 target_lang = "Russian"
 target_lang_code = "ru"
@@ -107,16 +102,16 @@ https://cdn.jsdelivr.net/gh/sc-localization/sc-translations@main/translations/{V
 uv run python -m translator input/global.ini
 
 # Override backend
-uv run python -m translator input/global.ini --backend gemini
+uv run python -m translator input/global.ini --backend ollama --model qwen2.5:14b
 
 # Override output dir (e.g. for local testing)
 uv run python -m translator input/global.ini --output-dir output/
 
-# Ollama with a specific model
-uv run python -m translator input/global.ini --backend ollama --model qwen2.5:7b
+# LM Studio with a specific model (server must be running on port 1234)
+uv run python -m translator input/global.ini --backend lmstudio --model qwen2.5-coder-14b-instruct
 
-# LM Studio (server must be running on port 1234)
-uv run python -m translator input/global.ini --backend lmstudio --model "my-loaded-model"
+# Auto-detect optimal batch size from model context window
+uv run python -m translator input/global.ini --batch-size auto
 
 # Translate to German
 uv run python -m translator input/global.ini --target-lang German --target-lang-code de
@@ -149,14 +144,14 @@ positional:
   input                  Path to source global.ini (default: global.ini)
 
 options:
-  --backend              claude | gemini | codex | ollama | lmstudio  (default from toml or claude)
+  --backend              ollama | lmstudio  (default from toml or lmstudio)
   --model                Model name; each backend has a sensible default
+  --batch-size           Lines per AI call, or 'auto' to detect from model context window  (default from toml or 50)
   --version              Game version tag for output path  (default from toml or LIVE)
   --output-dir           Base output directory  (default from toml or output/translations)
   --target-lang          Target language name, e.g. German, French  (default from toml or Russian)
   --target-lang-code     Language code for output path, e.g. de, fr  (default from toml or ru)
   --source-lang          Source language name  (default: English)
-  --batch-size           Lines per AI call  (default from toml or 50)
   --max-retries          Retries per batch on failure  (default from toml or 3)
   --lmstudio-port        LM Studio server port  (default: 1234)
   -v, --verbose          Debug logging (shows prompts and responses)

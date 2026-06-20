@@ -35,16 +35,18 @@ class CLIBackend(TranslatorBackend):
             + json.dumps(values, ensure_ascii=False)
         )
         logger.debug("--- PROMPT ---\n%s\n--- END PROMPT ---", prompt)
-        cmd = self.build_command(prompt)
 
+        cmd = self.build_command(prompt)
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         logger.debug("--- RESPONSE ---\n%s\n--- END RESPONSE ---", result.stdout)
+
         return _parse_json_response(result.stdout, expected_len=len(values))
 
 
 def _parse_json_response(output: str, expected_len: int) -> list[str]:
     start = output.find("[")
     end = output.rfind("]")
+
     if start == -1 or end == -1:
         raise ValueError(f"No JSON array found in response:\n{output[:500]}")
 
@@ -52,4 +54,5 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
 
     if len(parsed) != expected_len:
         raise ValueError(f"Expected {expected_len} translations, got {len(parsed)}")
+
     return parsed

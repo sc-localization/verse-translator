@@ -25,7 +25,9 @@ def get_output_dir(config: dict[str, Any]) -> Path | None:
     try:
         return Path(config["output"]["dir"])
     except KeyError:
-        return None
+        pass
+
+    return None
 
 
 def get_defaults(config: dict[str, Any]) -> dict[str, Any]:

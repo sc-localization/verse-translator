@@ -34,7 +34,6 @@ def _classify(raw: str) -> RawLine:
         value = raw[eq + 1 :]
         return RawLine(kind=LineKind.ENTRY, raw=raw, key=key, value=value)
 
-    # Unrecognised — treat as comment to preserve it
     return RawLine(kind=LineKind.COMMENT, raw=raw)
 
 

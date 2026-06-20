@@ -26,7 +26,6 @@ def bump_version(
     channel: dict[str, Any] = data.setdefault(game_version, {"languages": {}})
     languages: dict[str, Any] = channel.setdefault("languages", {})
     current = languages.get(lang_code, {}).get("version", "1.0.0")
-
     new_version = _bump_patch(current)
     languages[lang_code] = {"version": new_version}
 
@@ -39,7 +38,10 @@ def bump_version(
 
 def _bump_patch(version: str) -> str:
     parts = version.split(".")
+
     if len(parts) != 3:  # noqa: PLR2004
         return "1.0.1"
+
     major, minor, patch = parts
+
     return f"{major}.{minor}.{int(patch) + 1}"

@@ -16,7 +16,9 @@ Cache = dict[str, CacheEntry]  # key -> {src, dst}
 def load(path: Path) -> Cache:
     if not path.exists():
         return {}
+
     data: Cache = json.loads(path.read_text(encoding="utf-8"))
+
     return data
 
 

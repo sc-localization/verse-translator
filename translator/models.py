@@ -27,6 +27,7 @@ class RawLine:
         if self.kind == LineKind.ENTRY:
             v = self.translated if self.translated is not None else self.value
             return f"{self.key}={v}"
+
         return self.raw
 
 
@@ -59,12 +60,13 @@ _VAR_RE = re.compile(
 def _is_translatable(value: str) -> bool:
     if not value.strip():
         return False
-    # strip all known variable tokens and whitespace
+
     stripped = _VAR_RE.sub("", value).strip()
-    # if nothing left — pure variables, skip
+
     if not stripped:
         return False
-    # if stripped has no letter characters at all
+
     if not re.search(r"[A-Za-z]", stripped):
         return False
+
     return True
