@@ -3,6 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 
+class ContextTooLongError(Exception):
+    """Raised when a batch exceeds the model's context window."""
+
+
 class TranslatorBackend(ABC):
     """Common interface for all translation backends."""
 

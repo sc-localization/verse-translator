@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
-from translator.backends.base import TranslatorBackend
+from translator.backends.base import ContextTooLongError, TranslatorBackend
 
 _USER_INSTRUCTION = (
     "Translate the following JSON array of strings.\n"
@@ -64,8 +65,14 @@ class LMStudioBackend(TranslatorBackend):
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            body_text = e.read().decode(errors="replace")
+            if e.code == 400 and "context" in body_text:
+                raise ContextTooLongError(body_text) from e
+            raise RuntimeError(f"LM Studio {e.code}: {body_text}") from e
 
         output: str = data["choices"][0]["message"]["content"]
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from translator.backends.base import TranslatorBackend
+from translator.backends.base import ContextTooLongError, TranslatorBackend
 from translator.batcher import make_batches
 from translator.cache import (
     Cache,
@@ -160,6 +160,37 @@ def _translate_with_retry(
                 "Batch %d/%d — attempt %d", batch_idx + 1, total_batches, attempt
             )
             return backend.translate_batch(values, system_prompt)
+        except ContextTooLongError:
+            if len(values) == 1:
+                raise RuntimeError(
+                    f"Batch {batch_idx + 1}/{total_batches}: single entry exceeds context"
+                )
+            half = len(values) // 2
+            logger.warning(
+                "Batch %d/%d too long (%d entries), splitting in half",
+                batch_idx + 1,
+                total_batches,
+                len(values),
+            )
+            left = _translate_with_retry(
+                backend,
+                values[:half],
+                system_prompt,
+                max_retries,
+                retry_delay,
+                batch_idx,
+                total_batches,
+            )
+            right = _translate_with_retry(
+                backend,
+                values[half:],
+                system_prompt,
+                max_retries,
+                retry_delay,
+                batch_idx,
+                total_batches,
+            )
+            return left + right
         except Exception as exc:
             last_exc = exc
             logger.warning(
