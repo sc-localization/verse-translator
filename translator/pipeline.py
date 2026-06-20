@@ -33,7 +33,12 @@ Rules:
 - Translate only human-readable text. Do NOT translate variables: ~func(), @tag, %ls, {{0}}, \\n, <tags>.
 - Keep the sci-fi tone and atmosphere of the original.
 - Preserve capitalisation style (ALL CAPS stays ALL CAPS, Title Case stays Title Case).
-- Ship names, star systems, and corporation names should remain untranslated unless a well-known official translation exists.
+- Proper nouns (locations, ships, corporations, star systems, people) must NEVER be translated — keep them exactly as written in English.
+
+Proper nouns to keep untranslated (examples, not exhaustive):
+Locations: Lorville, Hurston, ArcCorp, Crusader, microTech, Stanton, Pyro, Magnus, Nyx, Orison, Area18, New Babbage, Port Tressler, Grim HEX, CRU-L1, HUR-L1, ARC-L1, MIC-L1, Everus Harbor, Baijini Point, Port Olisar, Delamar, Levski
+Ships: Cutlass, Hornet, Constellation, Freelancer, Caterpillar, Reclaimer, Hammerhead, Carrack, 890 Jump, Aurora, Avenger, Gladius, Arrow, Eclipse, Vanguard, Valkyrie, Prospector, Vulture
+Corporations: Hurston Dynamics, Crusader Industries, microTech, MISC, Anvil, Origin, RSI, Drake, Aegis, Esperia, Banu, Xi'an
 """
 
 
