@@ -63,13 +63,11 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
 
     hits, misses = _split_by_cache(translatable, cache)
 
-    logger.info(
-        "Entries: %d total, %d cached, %d to translate (backend: %s)",
-        len(translatable),
-        len(hits),
-        len(misses),
-        backend.name,
-    )
+    total = len(translatable)
+    cached = len(hits)
+    remaining = len(misses)
+    pct = cached * 100 // total if total else 0
+    print(f"  Progress: {cached}/{total} translated ({pct}%), {remaining} remaining\n")
 
     # Apply cached translations immediately
     for entry in hits:
@@ -81,7 +79,12 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
         batches = make_batches(misses, config.batch_size)
         total_batches = len(batches)
 
-        with tqdm(total=len(misses), unit="entry", desc="Translating") as bar:
+        with tqdm(
+            total=total,
+            initial=cached,
+            unit="entry",
+            desc="Translating",
+        ) as bar:
             for batch_idx, batch in enumerate(batches):
                 values = [entry.value or "" for entry in batch]
                 translated = _translate_with_retry(
@@ -98,7 +101,6 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                     if entry.key:
                         cache[entry.key] = {"src": entry.value or "", "dst": dst}
                 save_cache(cache_path, cache)
-                assemble(parsed, config.output_path)
                 bar.update(len(batch))
                 bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
 
