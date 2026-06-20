@@ -101,6 +101,7 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                     if entry.key:
                         cache[entry.key] = {"src": entry.value or "", "dst": dst}
                 save_cache(cache_path, cache)
+                assemble(parsed, config.output_path)
                 bar.update(len(batch))
                 bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
 
