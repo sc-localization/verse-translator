@@ -4,6 +4,8 @@ import logging
 import time
 from pathlib import Path
 
+from tqdm import tqdm
+
 from translator.backends.base import TranslatorBackend
 from translator.batcher import make_batches
 from translator.cache import (
@@ -44,12 +46,19 @@ def build_system_prompt(config: Config) -> str:
 
 def run(config: Config, backend: TranslatorBackend) -> Path:
     """Full pipeline: parse → cache lookup → batch → translate → assemble."""
-    logger.info("Parsing %s", config.input_path)
+    cache_path = cache_path_for(config.output_path)
+    print(
+        f"\n"
+        f"  Input:    {config.input_path}\n"
+        f"  Output:   {config.output_path}\n"
+        f"  Cache:    {cache_path}\n"
+        f"  Language: {config.source_lang} → {config.target_lang}\n"
+        f"  Backend:  {backend.name}\n"
+    )
+
     parsed: ParsedIni = parse(config.input_path)
 
     translatable = parsed.translatable_entries()
-
-    cache_path = cache_path_for(config.output_path)
     cache = load_cache(cache_path)
 
     hits, misses = _split_by_cache(translatable, cache)
@@ -72,26 +81,28 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
         batches = make_batches(misses, config.batch_size)
         done = 0
 
-        for batch_idx, batch in enumerate(batches):
-            values = [entry.value or "" for entry in batch]
+        with tqdm(total=len(misses), unit="entry", desc="Translating") as bar:
+            for batch_idx, batch in enumerate(batches):
+                values = [entry.value or "" for entry in batch]
 
-            translated = _translate_with_retry(
-                backend=backend,
-                values=values,
-                system_prompt=system_prompt,
-                max_retries=config.max_retries,
-                retry_delay=config.retry_delay_seconds,
-                batch_idx=batch_idx,
-                total_batches=len(batches),
-            )
+                translated = _translate_with_retry(
+                    backend=backend,
+                    values=values,
+                    system_prompt=system_prompt,
+                    max_retries=config.max_retries,
+                    retry_delay=config.retry_delay_seconds,
+                    batch_idx=batch_idx,
+                    total_batches=len(batches),
+                )
 
-            for entry, dst in zip(batch, translated):
-                entry.translated = dst
-                if entry.key:
-                    cache[entry.key] = {"src": entry.value or "", "dst": dst}
+                for entry, dst in zip(batch, translated):
+                    entry.translated = dst
+                    if entry.key:
+                        cache[entry.key] = {"src": entry.value or "", "dst": dst}
 
-            done += len(batch)
-            logger.info("Progress: %d/%d new entries translated", done, len(misses))
+                done += len(batch)
+                bar.update(len(batch))
+                bar.set_postfix(batch=f"{batch_idx + 1}/{len(batches)}")
 
     save_cache(cache_path, cache)
     logger.info("Cache saved to %s", cache_path)

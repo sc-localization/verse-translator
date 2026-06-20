@@ -5,6 +5,7 @@ description = "Star Citizen global.ini translation pipeline using Claude CLI"
 requires-python = ">=3.10"
 dependencies = [
     "tomli>=2.4.1",
+    "tqdm>=4.68.3",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,7 @@ dev = [
     "mypy>=2.1.0",
     "pytest>=9.1.0",
     "ruff>=0.15.18",
+    "types-tqdm>=4.68.0.20260608",
 ]
 
 [tool.mypy]
