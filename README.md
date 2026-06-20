@@ -110,9 +110,6 @@ uv run python -m translator input/global.ini --output-dir output/
 # LM Studio with a specific model (server must be running on port 1234)
 uv run python -m translator input/global.ini --backend lmstudio --model qwen2.5-coder-14b-instruct
 
-# Auto-detect optimal batch size from model context window
-uv run python -m translator input/global.ini --batch-size auto
-
 # Translate to German
 uv run python -m translator input/global.ini --target-lang German --target-lang-code de
 
@@ -146,7 +143,7 @@ positional:
 options:
   --backend              ollama | lmstudio  (default from toml or lmstudio)
   --model                Model name; each backend has a sensible default
-  --batch-size           Lines per AI call, or 'auto' to detect from model context window  (default from toml or 50)
+  --batch-size           Lines per AI call  (default from toml or 50)
   --version              Game version tag for output path  (default from toml or LIVE)
   --output-dir           Base output directory  (default from toml or output/translations)
   --target-lang          Target language name, e.g. German, French  (default from toml or Russian)

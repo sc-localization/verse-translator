@@ -32,21 +32,6 @@ class LMStudioBackend(TranslatorBackend):
     def name(self) -> str:
         return f"lmstudio/{self.model}"
 
-    def context_length(self) -> int | None:
-        try:
-            req = urllib.request.Request(f"{self._base_url}/v1/models")
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read())
-
-            for entry in data.get("data", []):
-                ctx = entry.get("context_length") or entry.get("max_context_length")
-                if ctx:
-                    return int(ctx)
-        except Exception:
-            pass
-
-        return None
-
     def translate_batch(self, values: list[str], system_prompt: str) -> list[str]:
         user_content = _USER_INSTRUCTION + json.dumps(values, ensure_ascii=False)
         body = json.dumps(
