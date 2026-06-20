@@ -34,18 +34,33 @@ Rules:
 - Keep the sci-fi tone and atmosphere of the original.
 - Preserve capitalisation style (ALL CAPS stays ALL CAPS, Title Case stays Title Case).
 - Proper nouns (locations, ships, corporations, star systems, people) must NEVER be translated — keep them exactly as written in English.
+{glossary_section}"""
 
-Proper nouns to keep untranslated (examples, not exhaustive):
-Locations: Lorville, Hurston, ArcCorp, Crusader, microTech, Stanton, Pyro, Magnus, Nyx, Orison, Area18, New Babbage, Port Tressler, Grim HEX, CRU-L1, HUR-L1, ARC-L1, MIC-L1, Everus Harbor, Baijini Point, Port Olisar, Delamar, Levski
-Ships: Cutlass, Hornet, Constellation, Freelancer, Caterpillar, Reclaimer, Hammerhead, Carrack, 890 Jump, Aurora, Avenger, Gladius, Arrow, Eclipse, Vanguard, Valkyrie, Prospector, Vulture
-Corporations: Hurston Dynamics, Crusader Industries, microTech, MISC, Anvil, Origin, RSI, Drake, Aegis, Esperia, Banu, Xi'an, Sakura Sun, Covalex, Shubin, Rayari, Tumbril, Greycat, Consolidated Outland, Argo
-"""
+_GLOSSARY_PATH = Path("glossary.txt")
+
+
+def _load_glossary() -> list[str]:
+    if not _GLOSSARY_PATH.exists():
+        return []
+    terms = []
+    for line in _GLOSSARY_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            terms.append(line)
+    return terms
 
 
 def build_system_prompt(config: Config) -> str:
+    terms = _load_glossary()
+    if terms:
+        glossary_section = "\nDo NOT translate these terms: " + ", ".join(terms)
+    else:
+        glossary_section = ""
+
     return _SYSTEM_PROMPT_TEMPLATE.format(
         source_lang=config.source_lang,
         target_lang=config.target_lang,
+        glossary_section=glossary_section,
     )
 
 
