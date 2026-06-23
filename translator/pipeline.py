@@ -95,10 +95,15 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     for entry in hits:
         entry.translated = cache[entry.key or ""]["dst"]
 
-    all_entries = [line for line in parsed.lines if line.kind == LineKind.ENTRY]
+    miss_keys = {e.key for e in misses}
+    initial_entries = [
+        line
+        for line in parsed.lines
+        if line.kind == LineKind.ENTRY and line.key not in miss_keys
+    ]
 
-    # Write cached + untranslatable entries as the initial file
-    assemble_entries(all_entries, config.output_path, append=False)
+    # Write cached + untranslatable entries; misses are appended after translation
+    assemble_entries(initial_entries, config.output_path, append=False)
 
     if not misses:
         save_cache(cache_path, cache)
