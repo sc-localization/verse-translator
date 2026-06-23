@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 import urllib.error
 import urllib.request
 
 from translator.backends.base import ContextTooLongError, TranslatorBackend
+
+logger = logging.getLogger(__name__)
 
 _USER_INSTRUCTION = (
     "Translate the following JSON array of strings.\n"
@@ -12,12 +16,13 @@ _USER_INSTRUCTION = (
     "Keep variables (~func(), @tag, %ls, \\n, {0}, <tags>) unchanged.\n\n"
 )
 
+_LOAD_POLL_INTERVAL = 2.0  # seconds between status checks
+
 
 class LMStudioBackend(TranslatorBackend):
     """
     LM Studio local server — OpenAI-compatible HTTP API on localhost.
-    Start server in LM Studio UI, then run this backend.
-    Completely free, runs locally.
+    Automatically loads the model via LM Studio API if not already loaded.
     Default port: 1234.
     """
 
@@ -31,6 +36,44 @@ class LMStudioBackend(TranslatorBackend):
     @property
     def name(self) -> str:
         return f"lmstudio/{self.model}"
+
+    def ensure_model_loaded(self) -> None:
+        """Check if model is loaded; load it if not. Blocks until ready."""
+        if self._is_model_loaded():
+            logger.debug("Model %s already loaded", self.model)
+            return
+
+        print(f"  Model {self.model!r} not loaded — requesting LM Studio to load it...")
+        self._request_load()
+
+        while not self._is_model_loaded():
+            time.sleep(_LOAD_POLL_INTERVAL)
+
+        print(f"  Model {self.model!r} loaded.\n")
+
+    def _is_model_loaded(self) -> bool:
+        try:
+            req = urllib.request.Request(f"{self._base_url}/api/v1/models")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            loaded = [m.get("id", "") for m in data.get("data", [])]
+            return any(self.model in m_id for m_id in loaded)
+        except Exception:
+            return False
+
+    def _request_load(self) -> None:
+        body = json.dumps({"identifier": self.model}).encode()
+        req = urllib.request.Request(
+            f"{self._base_url}/api/v1/models/load",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
+        except urllib.error.HTTPError as e:
+            body_text = e.read().decode(errors="replace")
+            raise RuntimeError(f"LM Studio failed to load model: {body_text}") from e
 
     def translate_batch(self, values: list[str], system_prompt: str) -> list[str]:
         user_content = _USER_INSTRUCTION + json.dumps(values, ensure_ascii=False)

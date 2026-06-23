@@ -7,6 +7,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from translator.backends.base import ContextTooLongError, TranslatorBackend
+from translator.backends.lmstudio import LMStudioBackend
 from translator.batcher import make_batches
 from translator.cache import (
     Cache,
@@ -96,6 +97,9 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
 
     # Translate only the new/changed entries
     if misses:
+        if isinstance(backend, LMStudioBackend):
+            backend.ensure_model_loaded()
+
         system_prompt = build_system_prompt(config)
         batches = make_batches(misses, config.batch_size)
         total_batches = len(batches)

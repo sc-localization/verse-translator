@@ -21,7 +21,7 @@ def _build_backend(args: argparse.Namespace) -> LMStudioBackend | OllamaBackend:
 
     if args.backend == "lmstudio":
         return LMStudioBackend(
-            model=args.model or "qwen2.5-coder-14b-instruct",
+            model=args.model or "qwen2.5-14b-instruct",
             port=args.lmstudio_port,
         )
 
