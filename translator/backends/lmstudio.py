@@ -17,6 +17,7 @@ _USER_INSTRUCTION = (
 )
 
 _LOAD_POLL_INTERVAL = 2.0  # seconds between status checks
+_LOAD_TIMEOUT = 120  # seconds before giving up on model load
 
 # Reserve half the context for output; input takes the other half
 _DEFAULT_CONTEXT_LENGTH = 8192
@@ -59,11 +60,18 @@ class LMStudioBackend(TranslatorBackend):
         self._request_load()
 
         ctx = None
-        while True:
+        elapsed = 0.0
+        while elapsed < _LOAD_TIMEOUT:
             loaded, ctx = self._model_status()
             if loaded:
                 break
             time.sleep(_LOAD_POLL_INTERVAL)
+            elapsed += _LOAD_POLL_INTERVAL
+        else:
+            raise RuntimeError(
+                f"Timed out waiting for model {self.model!r} to load in LM Studio "
+                f"({_LOAD_TIMEOUT}s). Check the model name or download it manually."
+            )
 
         self._apply_context_length(ctx)
         print(f"  Model {self.model!r} loaded.\n")
