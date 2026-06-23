@@ -62,7 +62,7 @@ class LMStudioBackend(TranslatorBackend):
             return False
 
     def _request_load(self) -> None:
-        body = json.dumps({"identifier": self.model}).encode()
+        body = json.dumps({"model": self.model}).encode()
         req = urllib.request.Request(
             f"{self._base_url}/api/v1/models/load",
             data=body,
