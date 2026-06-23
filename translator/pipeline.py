@@ -35,6 +35,8 @@ Rules:
 - Keep the sci-fi tone and atmosphere of the original.
 - Preserve capitalisation style (ALL CAPS stays ALL CAPS, Title Case stays Title Case).
 - Proper nouns (locations, ships, corporations, star systems, people) must NEVER be translated — keep them exactly as written in English.
+- If the text looks like an organization, faction, service, or brand name — do NOT translate it. Keep it in English.
+- When in doubt whether something is a proper noun — keep it in English.
 - Company names and their legal suffixes (LLC, Inc., Corp., Ltd., Co.) must NEVER be translated or transliterated — keep the full name in English.
 - Star system names include the word "System" — keep the full phrase in English (e.g. "Stanton System" stays "Stanton System", NOT "Система Стантон").
 - Abbreviations (ALL CAPS words of 5 characters or fewer, e.g. HUD, VTOL, SHD, ESP, EMP, SCU, UEC, aUEC) must NEVER be translated — keep them as-is.
