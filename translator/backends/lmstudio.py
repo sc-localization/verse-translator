@@ -166,7 +166,8 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
     try:
         parsed, _ = json.JSONDecoder().raw_decode(output, start)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in response: {exc}\n{output[:500]}") from exc
+        # Splitting the batch often resolves model confusion that causes bad JSON
+        raise ContextTooLongError(f"JSON decoding failed: {exc}") from exc
 
     if len(parsed) != expected_len:
         raise ValueError(f"Expected {expected_len} translations, got {len(parsed)}")
