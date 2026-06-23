@@ -40,33 +40,13 @@ Rules:
 - Company names and their legal suffixes (LLC, Inc., Corp., Ltd., Co.) must NEVER be translated or transliterated — keep the full name in English.
 - Star system names include the word "System" — keep the full phrase in English (e.g. "Stanton System" stays "Stanton System", NOT "Система Стантон").
 - Abbreviations (ALL CAPS words of 5 characters or fewer, e.g. HUD, VTOL, SHD, ESP, EMP, SCU, UEC, aUEC) must NEVER be translated — keep them as-is.
-{glossary_section}"""
-
-_GLOSSARY_PATH = Path("glossary.txt")
-
-
-def _load_glossary() -> list[str]:
-    if not _GLOSSARY_PATH.exists():
-        return []
-    terms = []
-    for line in _GLOSSARY_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            terms.append(line)
-    return terms
+"""
 
 
 def build_system_prompt(config: Config) -> str:
-    terms = _load_glossary()
-    if terms:
-        glossary_section = "\nDo NOT translate these terms: " + ", ".join(terms)
-    else:
-        glossary_section = ""
-
     return _SYSTEM_PROMPT_TEMPLATE.format(
         source_lang=config.source_lang,
         target_lang=config.target_lang,
-        glossary_section=glossary_section,
     )
 
 
@@ -208,9 +188,12 @@ def _translate_with_retry(
             return backend.translate_batch(values, system_prompt)
         except ContextTooLongError:
             if len(values) == 1:
-                raise RuntimeError(
-                    f"Batch {batch_idx + 1}/{total_batches}: single entry exceeds context"
+                logger.warning(
+                    "Batch %d/%d: single entry could not be translated, keeping original",
+                    batch_idx + 1,
+                    total_batches,
                 )
+                return values
             half = len(values) // 2
             logger.warning(
                 "Batch %d/%d too long (%d entries), splitting in half",
