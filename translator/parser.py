@@ -37,8 +37,14 @@ def _classify(raw: str) -> RawLine:
     return RawLine(kind=LineKind.COMMENT, raw=raw)
 
 
-def assemble(parsed: ParsedIni, output_path: Path) -> None:
-    """Write all key=value entries: translated where available, original otherwise."""
+def assemble_entries(entries: list, output_path: Path, append: bool = False) -> None:
+    """Write key=value lines for the given entries. Append or overwrite."""
+    if not entries:
+        return
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [line.output() for line in parsed.lines if line.kind == LineKind.ENTRY]
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    lines = [e.output() for e in entries]
+    mode = "a" if append else "w"
+    with output_path.open(mode, encoding="utf-8") as f:
+        if append and output_path.exists() and output_path.stat().st_size > 0:
+            f.write("\n")
+        f.write("\n".join(lines))

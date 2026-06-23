@@ -7,6 +7,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from translator.backends.base import ContextTooLongError, TranslatorBackend
+from translator.backends.lmstudio import LMStudioBackend
 from translator.batcher import make_batches
 from translator.cache import (
     Cache,
@@ -19,8 +20,8 @@ from translator.cache import (
     save as save_cache,
 )
 from translator.config import Config
-from translator.models import ParsedIni, RawLine
-from translator.parser import assemble, parse
+from translator.models import LineKind, ParsedIni, RawLine
+from translator.parser import assemble_entries, parse
 from translator.versioning import bump_version
 
 logger = logging.getLogger(__name__)
@@ -90,47 +91,64 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     pct = cached * 100 // total if total else 0
     print(f"  Progress: {cached}/{total} translated ({pct}%), {remaining} remaining\n")
 
-    # Apply cached translations immediately
+    # Apply cached translations and write them first
     for entry in hits:
         entry.translated = cache[entry.key or ""]["dst"]
 
-    # Translate only the new/changed entries
-    if misses:
-        system_prompt = build_system_prompt(config)
-        batches = make_batches(misses, config.batch_size)
-        total_batches = len(batches)
+    miss_keys = {e.key for e in misses}
+    initial_entries = [
+        line
+        for line in parsed.lines
+        if line.kind == LineKind.ENTRY and line.key not in miss_keys
+    ]
 
-        with tqdm(
-            total=total,
-            initial=cached,
-            unit="entry",
-            desc="Translating",
-        ) as bar:
-            for batch_idx, batch in enumerate(batches):
-                values = [entry.value or "" for entry in batch]
-                translated = _translate_with_retry(
-                    backend=backend,
-                    values=values,
-                    system_prompt=system_prompt,
-                    max_retries=config.max_retries,
-                    retry_delay=config.retry_delay_seconds,
-                    batch_idx=batch_idx,
-                    total_batches=total_batches,
-                )
-                for entry, dst in zip(batch, translated):
-                    entry.translated = dst
-                    if entry.key:
-                        cache[entry.key] = {"src": entry.value or "", "dst": dst}
-                save_cache(cache_path, cache)
-                assemble(parsed, config.output_path)
-                bar.update(len(batch))
-                bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
+    # Write cached + untranslatable entries; misses are appended after translation
+    assemble_entries(initial_entries, config.output_path, append=False)
+
+    if not misses:
+        save_cache(cache_path, cache)
+        logger.info("Cache saved to %s", cache_path)
+        return config.output_path
+
+    if isinstance(backend, LMStudioBackend):
+        backend.ensure_model_loaded()
+
+    system_prompt = build_system_prompt(config)
+    batches = make_batches(misses, config.batch_size)
+    total_batches = len(batches)
+
+    with tqdm(
+        total=total,
+        initial=cached,
+        unit="entry",
+        desc="Translating",
+    ) as bar:
+        for batch_idx, batch in enumerate(batches):
+            values = [entry.value or "" for entry in batch]
+            translated = _translate_with_retry(
+                backend=backend,
+                values=values,
+                system_prompt=system_prompt,
+                max_retries=config.max_retries,
+                retry_delay=config.retry_delay_seconds,
+                batch_idx=batch_idx,
+                total_batches=total_batches,
+            )
+            for entry, dst in zip(batch, translated):
+                entry.translated = dst
+                if entry.key:
+                    cache[entry.key] = {"src": entry.value or "", "dst": dst}
+            save_cache(cache_path, cache)
+            assemble_entries(batch, config.output_path, append=True)
+            bar.update(len(batch))
+            bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
 
     save_cache(cache_path, cache)
     logger.info("Cache saved to %s", cache_path)
 
-    logger.info("Writing output to %s", config.output_path)
-    assemble(parsed, config.output_path)
+    # Rewrite output in original file order (incremental appends above are for crash recovery)
+    final_entries = [line for line in parsed.lines if line.kind == LineKind.ENTRY]
+    assemble_entries(final_entries, config.output_path, append=False)
 
     new_version = bump_version(
         config.output_dir, config.version, config.target_lang_code

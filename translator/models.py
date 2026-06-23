@@ -57,7 +57,7 @@ _VAR_RE = re.compile(
 )
 
 # Matches SC fluff data: sequences of decimal numbers separated by spaces
-_FLUFF_RE = re.compile(r"(\d+\.\d+\s+){4,}")
+_FLUFF_RE = re.compile(r"\d+\.\d+(?:\s+\d+\.\d+){3,}")
 
 
 def _is_translatable(value: str) -> bool:
