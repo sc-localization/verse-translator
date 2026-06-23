@@ -146,6 +146,10 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     save_cache(cache_path, cache)
     logger.info("Cache saved to %s", cache_path)
 
+    # Rewrite output in original file order (incremental appends above are for crash recovery)
+    final_entries = [line for line in parsed.lines if line.kind == LineKind.ENTRY]
+    assemble_entries(final_entries, config.output_path, append=False)
+
     new_version = bump_version(
         config.output_dir, config.version, config.target_lang_code
     )
