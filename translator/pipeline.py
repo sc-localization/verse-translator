@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -188,12 +189,30 @@ def _translate_with_retry(
             return backend.translate_batch(values, system_prompt)
         except ContextTooLongError:
             if len(values) == 1:
+                chunks = _split_text(values[0])
+                if len(chunks) == 1:
+                    logger.warning(
+                        "Batch %d/%d: single entry could not be split further, keeping original",
+                        batch_idx + 1,
+                        total_batches,
+                    )
+                    return values
                 logger.warning(
-                    "Batch %d/%d: single entry could not be translated, keeping original",
+                    "Batch %d/%d: single entry too long, splitting into %d text chunks",
                     batch_idx + 1,
                     total_batches,
+                    len(chunks),
                 )
-                return values
+                translated_chunks = _translate_with_retry(
+                    backend,
+                    chunks,
+                    system_prompt,
+                    max_retries,
+                    retry_delay,
+                    batch_idx,
+                    total_batches,
+                )
+                return ["".join(translated_chunks)]
             half = len(values) // 2
             logger.warning(
                 "Batch %d/%d too long (%d entries), splitting in half",
@@ -235,3 +254,53 @@ def _translate_with_retry(
     raise RuntimeError(
         f"Batch {batch_idx + 1}/{total_batches} failed after {max_retries} attempts"
     ) from last_exc
+
+
+# ~2000 chars ≈ 500 tokens — safe chunk size for a single translation call
+_CHUNK_SIZE = 2000
+
+
+def _split_text(text: str) -> list[str]:
+    """Split a long string into translatable chunks at safe boundaries.
+
+    Priority: \\n → sentence boundary (. ) → space → hard cut.
+    Chunks are designed to be rejoined with "".join().
+    """
+    if len(text) <= _CHUNK_SIZE:
+        return [text]
+
+    mid = len(text) // 2
+    search_start = len(text) // 4
+    search_end = search_start * 3
+
+    best = -1
+
+    # Priority 1: \n escape sequence
+    for m in re.finditer(r"\\n", text):
+        candidate = m.end()
+        if search_start <= candidate <= search_end:
+            if best == -1 or abs(candidate - mid) < abs(best - mid):
+                best = candidate
+
+    # Priority 2: sentence boundary ". "
+    if best == -1:
+        for m in re.finditer(r"\.\s", text):
+            candidate = m.end()
+            if search_start <= candidate <= search_end:
+                if best == -1 or abs(candidate - mid) < abs(best - mid):
+                    best = candidate
+
+    # Priority 3: any space
+    if best == -1:
+        for m in re.finditer(r"\s", text):
+            candidate = m.end()
+            if search_start <= candidate <= search_end:
+                if best == -1 or abs(candidate - mid) < abs(best - mid):
+                    best = candidate
+
+    # Priority 4: hard cut at middle
+    if best == -1:
+        best = mid
+
+    left, right = text[:best], text[best:]
+    return _split_text(left) + _split_text(right)
