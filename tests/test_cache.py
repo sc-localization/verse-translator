@@ -1,4 +1,3 @@
-import json
 import tempfile
 import textwrap
 from pathlib import Path
@@ -6,6 +5,7 @@ from unittest.mock import MagicMock
 
 from translator.backends.base import TranslatorBackend
 from translator.cache import cache_path_for
+from translator.cache import load as load_cache
 from translator.config import Config
 from translator.pipeline import run
 
@@ -115,6 +115,6 @@ def test_cache_persisted_to_disk():
 
     cache_file = cache_path_for(config.output_path)
     assert cache_file.exists()
-    data = json.loads(cache_file.read_text())
+    data = load_cache(cache_file)
     assert data["ui_loading"]["src"] == "Loading screen"
     assert data["ui_loading"]["dst"] == "Экран загрузки"

@@ -15,6 +15,9 @@ from translator.cache import (
     cache_path_for,
 )
 from translator.cache import (
+    append as append_cache,
+)
+from translator.cache import (
     load as load_cache,
 )
 from translator.cache import (
@@ -131,13 +134,18 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                 max_chars=max_chars,
             )
             done: list[RawLine] = []
+            new_records: Cache = {}
             for representative, dst in zip(batch, translated):
                 for entry in groups[representative.value or ""]:
                     entry.translated = dst
                     if entry.key:
-                        cache[entry.key] = {"src": entry.value or "", "dst": dst}
+                        new_records[entry.key] = {
+                            "src": entry.value or "",
+                            "dst": dst,
+                        }
                     done.append(entry)
-            save_cache(cache_path, cache)
+            cache.update(new_records)
+            append_cache(cache_path, new_records)
             assemble_entries(done, config.output_path, append=True)
             bar.update(len(done))
             bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
