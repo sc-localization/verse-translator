@@ -44,6 +44,22 @@ cp verse-translator.example.toml verse-translator.toml
 
 Make sure the LM Studio local server is running before starting (default port 1234). The model is loaded automatically if needed.
 
+## Speeding up translation with a draft model
+
+LM Studio supports [speculative decoding](https://lmstudio.ai/docs/app/advanced/speculative-decoding): a small "draft" model predicts tokens ahead and the main model only verifies them. Translation output is highly predictable, so acceptance rates are high — expect roughly 1.5–2× faster generation with identical output quality.
+
+Setup (one-time, in the LM Studio UI):
+
+1. Download a draft model from the same family as the main one — for `qwen/qwen3-14b` use `qwen3-0.6b` (the draft must share the main model's vocabulary, so stick to the same model line).
+2. Switch LM Studio to **Power User** mode (selector at the bottom of the window) — otherwise the Speculative Decoding section is hidden.
+3. Open **My Models** → gear icon on `qwen/qwen3-14b` (*Edit default load settings*) → **Speculative Decoding** → pick `qwen3-0.6b` as the draft model.
+
+Because this is saved as a default load setting, it also applies when the pipeline loads the model itself through the LM Studio API — no code or config changes needed here.
+
+To verify it works, check the server logs in LM Studio: responses include `draft_model` and `accepted_draft_tokens_count` fields, and `tokens_per_second` goes up.
+
+**Note on VRAM:** the draft model needs ~0.5–1 GB on top of the main model. If the 14B barely fits in your GPU memory, make sure adding the draft doesn't push main-model layers to the CPU — that would cancel out the gain.
+
 ## Configuration
 
 Settings are read from `verse-translator.toml` (gitignored — each contributor has their own).
