@@ -125,7 +125,7 @@ class LMStudioBackend(TranslatorBackend):
             "model": self.model,
             "system_prompt": system_prompt,
             "input": user_content,
-            "temperature": 0.3,
+            "temperature": 0,
             "context_length": self._context_length,
             "max_output_tokens": self._max_output_tokens,
             "store": False,
