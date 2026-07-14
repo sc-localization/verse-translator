@@ -6,7 +6,7 @@
 
 # verse-translator
 
-Pipeline for translating Star Citizen `global.ini` localization files using AI CLI agents and local models. Automates what you'd otherwise do manually: split the file into batches, send each batch with a prompt to an AI tool, collect responses, and assemble the translated file.
+Pipeline for translating Star Citizen `global.ini` localization files using local models via LM Studio. Automates what you'd otherwise do manually: split the file into batches, send each batch with a prompt to the model, collect responses, and assemble the translated file.
 
 Translated files are meant to be published to [sc-translations](https://github.com/sc-localization/sc-translations) and served to users via jsDelivr CDN.
 
@@ -25,12 +25,9 @@ global.ini (EN)
 
 On subsequent runs only new or changed lines are sent to the model — everything else is taken from cache.
 
-## Supported backends
+## Backend
 
-| Backend    | How it works               | Auth                |
-| ---------- | -------------------------- | ------------------- |
-| `lmstudio` | HTTP `localhost:1234`      | None — runs locally |
-| `ollama`   | `ollama run <model> "..."` | None — runs locally |
+Translation runs through [LM Studio](https://lmstudio.ai) (HTTP on `localhost:1234`, no auth — everything stays local). The pipeline loads the model via the LM Studio API automatically if it is not loaded yet.
 
 ## Setup
 
@@ -45,10 +42,7 @@ uv sync
 cp verse-translator.example.toml verse-translator.toml
 ```
 
-Make sure your local model server is running before starting:
-
-- **lmstudio**: [lmstudio.ai](https://lmstudio.ai) — load a model and start the local server in the UI (default port 1234)
-- **ollama**: [ollama.com](https://ollama.com) — `ollama pull qwen2.5:14b`
+Make sure the LM Studio local server is running before starting (default port 1234). The model is loaded automatically if needed.
 
 ## Configuration
 
@@ -64,8 +58,7 @@ cp verse-translator.example.toml verse-translator.toml
 dir = "../sc-translations/translations"  # path to your local clone of sc-translations
 
 [defaults]
-backend = "lmstudio"
-model = "qwen2.5-coder-14b-instruct"
+model = "qwen/qwen3-14b"
 version = "LIVE"
 target_lang = "Russian"
 target_lang_code = "ru"
@@ -101,14 +94,11 @@ https://cdn.jsdelivr.net/gh/sc-localization/sc-translations@main/translations/{V
 # Uses settings from verse-translator.toml
 uv run python -m translator input/global.ini
 
-# Override backend
-uv run python -m translator input/global.ini --backend ollama --model qwen2.5:14b
-
 # Override output dir (e.g. for local testing)
 uv run python -m translator input/global.ini --output-dir output/
 
-# LM Studio with a specific model (server must be running on port 1234)
-uv run python -m translator input/global.ini --backend lmstudio --model qwen2.5-coder-14b-instruct
+# Use a specific model (server must be running on port 1234)
+uv run python -m translator input/global.ini --model qwen/qwen3-14b
 
 # Translate to German
 uv run python -m translator input/global.ini --target-lang German --target-lang-code de
@@ -141,8 +131,7 @@ positional:
   input                  Path to source global.ini (default: global.ini)
 
 options:
-  --backend              ollama | lmstudio  (default from toml or lmstudio)
-  --model                Model name; each backend has a sensible default
+  --model                Model name  (default from toml or qwen/qwen3-14b)
   --batch-size           Lines per AI call  (default from toml or 50)
   --version              Game version tag for output path  (default from toml or LIVE)
   --output-dir           Base output directory  (default from toml or output/translations)

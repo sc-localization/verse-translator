@@ -6,26 +6,17 @@ import sys
 from pathlib import Path
 
 from translator.backends.lmstudio import LMStudioBackend
-from translator.backends.ollama import OllamaBackend
 from translator.config import Config
 from translator.pipeline import run
 from translator.project_config import get_defaults, get_output_dir
 from translator.project_config import load as load_config
 
-BACKENDS = ["ollama", "lmstudio"]
 
-
-def _build_backend(args: argparse.Namespace) -> LMStudioBackend | OllamaBackend:
-    if args.backend == "ollama":
-        return OllamaBackend(model=args.model or "qwen/qwen3-14b")
-
-    if args.backend == "lmstudio":
-        return LMStudioBackend(
-            model=args.model or "qwen/qwen3-14b",
-            port=args.lmstudio_port,
-        )
-
-    raise ValueError(f"Unknown backend: {args.backend}")
+def _build_backend(args: argparse.Namespace) -> LMStudioBackend:
+    return LMStudioBackend(
+        model=args.model or "qwen/qwen3-14b",
+        port=args.lmstudio_port,
+    )
 
 
 def main() -> None:
@@ -35,7 +26,7 @@ def main() -> None:
     cfg_output_dir = get_output_dir(toml)
 
     parser = argparse.ArgumentParser(
-        description="Translate Star Citizen global.ini to any language via local models"
+        description="Translate Star Citizen global.ini to any language via LM Studio"
     )
 
     parser.add_argument("input", nargs="?", default="global.ini")
@@ -44,10 +35,6 @@ def main() -> None:
     )
 
     parser.add_argument("--version", default=d.get("version", "LIVE"))
-    parser.add_argument(
-        "--backend", choices=BACKENDS, default=d.get("backend", "lmstudio")
-    )
-
     parser.add_argument("--model", default=d.get("model", None))
     parser.add_argument("--lmstudio-port", type=int, default=1234)
     parser.add_argument(
