@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 
 from translator.models import LineKind
-from translator.parser import assemble, parse
+from translator.parser import assemble_entries, parse
 
 SAMPLE_INI = textwrap.dedent("""\
     ; Star Citizen Localization
@@ -64,9 +64,9 @@ def test_round_trip():
     with tempfile.NamedTemporaryFile(suffix=".ini", delete=False) as out_f:
         out_path = Path(out_f.name)
 
-    assemble(result, out_path)
+    assemble_entries(result.entries, out_path)
     written = out_path.read_text(encoding="utf-8")
 
     assert "ui_loading=Loading..." in written
-    assert "[General]" in written
-    assert "; Star Citizen Localization" in written
+    assert "ui_hello=Hello pilot" in written
+    assert "ui_var=~mission(foo)" in written
