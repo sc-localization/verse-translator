@@ -24,7 +24,13 @@ from translator.cache import (
     save as save_cache,
 )
 from translator.config import Config
-from translator.models import LineKind, ParsedIni, RawLine, extract_variables
+from translator.models import (
+    LineKind,
+    ParsedIni,
+    RawLine,
+    extract_variables,
+    variable_spans,
+)
 from translator.parser import assemble_entries, parse
 from translator.versioning import bump_version
 
@@ -383,7 +389,7 @@ def _translate_in_chunks(
     )
     translated: list[str] = []
     for group in _pack_chunks(chunks, max_chars):
-        translated += _translate_with_retry(
+        group_translated = _translate_with_retry(
             backend,
             group,
             system_prompt,
@@ -392,6 +398,18 @@ def _translate_in_chunks(
             batch_idx,
             total_batches,
             max_chars,
+        )
+        # Repair per chunk: a retry costs one chunk, not the whole entry
+        translated += _repair_broken_variables(
+            backend=backend,
+            values=group,
+            translated=group_translated,
+            system_prompt=system_prompt,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            batch_idx=batch_idx,
+            total_batches=total_batches,
+            max_chars=max_chars,
         )
     return ["".join(translated)]
 
@@ -424,10 +442,16 @@ def _split_text(text: str) -> list[str]:
     """Split a long string into translatable chunks at safe boundaries.
 
     Priority: \\n → sentence boundary (. ) → space → hard cut.
-    Chunks are designed to be rejoined with "".join().
+    Boundaries never fall inside a game variable — a cut ~func() or <tag>
+    cannot be preserved by translation. Chunks rejoin with "".join().
     """
     if len(text) <= _CHUNK_SIZE:
         return [text]
+
+    spans = variable_spans(text)
+
+    def outside_variables(candidate: int) -> bool:
+        return not any(start < candidate < end for start, end in spans)
 
     mid = len(text) // 2
     search_start = len(text) // 4
@@ -435,32 +459,28 @@ def _split_text(text: str) -> list[str]:
 
     best = -1
 
-    # Priority 1: \n escape sequence
-    for m in re.finditer(r"\\n", text):
-        candidate = m.end()
-        if search_start <= candidate <= search_end:
-            if best == -1 or abs(candidate - mid) < abs(best - mid):
+    # Boundary priority: \n escape → sentence end ". " → any space
+    for pattern in (r"\\n", r"\.\s", r"\s"):
+        for m in re.finditer(pattern, text):
+            candidate = m.end()
+            if (
+                search_start <= candidate <= search_end
+                and outside_variables(candidate)
+                and (best == -1 or abs(candidate - mid) < abs(best - mid))
+            ):
                 best = candidate
+        if best != -1:
+            break
 
-    # Priority 2: sentence boundary ". "
-    if best == -1:
-        for m in re.finditer(r"\.\s", text):
-            candidate = m.end()
-            if search_start <= candidate <= search_end:
-                if best == -1 or abs(candidate - mid) < abs(best - mid):
-                    best = candidate
-
-    # Priority 3: any space
-    if best == -1:
-        for m in re.finditer(r"\s", text):
-            candidate = m.end()
-            if search_start <= candidate <= search_end:
-                if best == -1 or abs(candidate - mid) < abs(best - mid):
-                    best = candidate
-
-    # Priority 4: hard cut at middle
+    # Fallback: hard cut at middle, nudged out of a variable if needed
     if best == -1:
         best = mid
+        for start, end in spans:
+            if start < best < end:
+                best = end if end < len(text) else start
+                break
+        if best <= 0 or best >= len(text):
+            best = mid
 
     left, right = text[:best], text[best:]
     return _split_text(left) + _split_text(right)

@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 
 from translator.backends.base import TranslatorBackend
 from translator.config import Config
-from translator.pipeline import run
+from translator.models import extract_variables
+from translator.pipeline import _split_text, run
 
 SAMPLE_INI = textwrap.dedent("""\
     ui_loading=Loading screen
@@ -93,3 +94,29 @@ def test_corrupted_variable_falls_back_to_source():
 
     assert backend.translate_batch.call_count == 2
     assert "ui_target=Target: ~mission(foo)" in output_path.read_text(encoding="utf-8")
+
+
+def test_split_text_never_cuts_variables():
+    sentence = "The quick brown fox jumps over the lazy dog. "
+    text = (sentence * 20 + "~mission(alpha|SomeLongContract) ") * 5
+
+    chunks = _split_text(text)
+
+    assert len(chunks) > 1
+    assert "".join(chunks) == text
+    total_vars = sum(len(extract_variables(c)) for c in chunks)
+    assert total_vars == len(extract_variables(text))
+
+
+def test_split_text_hard_cut_avoids_variable():
+    # No spaces or sentence ends anywhere — forces the hard-cut fallback
+    # onto a variable sitting exactly at the middle
+    var = "~mission(" + "x" * 50 + ")"
+    half = (4000 - len(var)) // 2
+    text = "a" * half + var + "b" * half
+
+    chunks = _split_text(text)
+
+    assert "".join(chunks) == text
+    total_vars = sum(len(extract_variables(c)) for c in chunks)
+    assert total_vars == len(extract_variables(text))

@@ -65,6 +65,11 @@ def extract_variables(value: str) -> list[str]:
     return _VAR_RE.findall(value)
 
 
+def variable_spans(value: str) -> list[tuple[int, int]]:
+    """(start, end) positions of game variables; text must not be cut inside them."""
+    return [m.span() for m in _VAR_RE.finditer(value)]
+
+
 def _is_translatable(value: str) -> bool:
     if not value.strip():
         return False
