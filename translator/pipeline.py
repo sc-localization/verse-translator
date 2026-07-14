@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from translator.backends.base import ContextTooLongError, TranslatorBackend
 from translator.backends.lmstudio import LMStudioBackend
-from translator.batcher import make_batches
+from translator.batcher import DEFAULT_MAX_CHARS, make_batches
 from translator.cache import (
     Cache,
     cache_path_for,
@@ -108,7 +108,8 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     if len(unique) < len(misses):
         print(f"  Dedup:    {len(misses)} entries → {len(unique)} unique strings\n")
 
-    batches = make_batches(unique, config.batch_size)
+    max_chars = _max_chars_for(backend)
+    batches = make_batches(unique, config.batch_size, max_chars)
     total_batches = len(batches)
 
     with tqdm(
@@ -127,6 +128,7 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                 retry_delay=config.retry_delay_seconds,
                 batch_idx=batch_idx,
                 total_batches=total_batches,
+                max_chars=max_chars,
             )
             done: list[RawLine] = []
             for representative, dst in zip(batch, translated):
@@ -182,6 +184,16 @@ def _split_by_cache(
     return hits, misses
 
 
+def _max_chars_for(backend: TranslatorBackend) -> int:
+    """Source-chars budget per request, derived from the model context window.
+
+    ~0.75 chars per context token leaves room for the system prompt on the
+    input side and the (longer, worse-tokenized) translation on the output side.
+    """
+    ctx = getattr(backend, "context_length", None)
+    return int(ctx * 0.75) if ctx else DEFAULT_MAX_CHARS
+
+
 def _translate_with_retry(
     backend: TranslatorBackend,
     values: list[str],
@@ -190,7 +202,21 @@ def _translate_with_retry(
     retry_delay: float,
     batch_idx: int,
     total_batches: int,
+    max_chars: int = DEFAULT_MAX_CHARS,
 ) -> list[str]:
+    # Split oversized single entries upfront instead of burning a doomed generation
+    if len(values) == 1 and len(values[0]) > max_chars:
+        return _translate_in_chunks(
+            backend,
+            values[0],
+            system_prompt,
+            max_retries,
+            retry_delay,
+            batch_idx,
+            total_batches,
+            max_chars,
+        )
+
     last_exc: Exception | None = None
 
     for attempt in range(1, max_retries + 1):
@@ -201,30 +227,16 @@ def _translate_with_retry(
             return backend.translate_batch(values, system_prompt)
         except ContextTooLongError:
             if len(values) == 1:
-                chunks = _split_text(values[0])
-                if len(chunks) == 1:
-                    logger.warning(
-                        "Batch %d/%d: single entry could not be split further, keeping original",
-                        batch_idx + 1,
-                        total_batches,
-                    )
-                    return values
-                logger.warning(
-                    "Batch %d/%d: single entry too long, splitting into %d text chunks",
-                    batch_idx + 1,
-                    total_batches,
-                    len(chunks),
-                )
-                translated_chunks = _translate_with_retry(
+                return _translate_in_chunks(
                     backend,
-                    chunks,
+                    values[0],
                     system_prompt,
                     max_retries,
                     retry_delay,
                     batch_idx,
                     total_batches,
+                    max_chars,
                 )
-                return ["".join(translated_chunks)]
             half = len(values) // 2
             logger.warning(
                 "Batch %d/%d too long (%d entries), splitting in half",
@@ -240,6 +252,7 @@ def _translate_with_retry(
                 retry_delay,
                 batch_idx,
                 total_batches,
+                max_chars,
             )
             right = _translate_with_retry(
                 backend,
@@ -249,6 +262,7 @@ def _translate_with_retry(
                 retry_delay,
                 batch_idx,
                 total_batches,
+                max_chars,
             )
             return left + right
         except Exception as exc:
@@ -266,6 +280,68 @@ def _translate_with_retry(
     raise RuntimeError(
         f"Batch {batch_idx + 1}/{total_batches} failed after {max_retries} attempts"
     ) from last_exc
+
+
+def _translate_in_chunks(
+    backend: TranslatorBackend,
+    text: str,
+    system_prompt: str,
+    max_retries: int,
+    retry_delay: float,
+    batch_idx: int,
+    total_batches: int,
+    max_chars: int,
+) -> list[str]:
+    """Translate one oversized entry as text chunks, rejoined afterwards."""
+    chunks = _split_text(text)
+    if len(chunks) == 1:
+        logger.warning(
+            "Batch %d/%d: single entry could not be split further, keeping original",
+            batch_idx + 1,
+            total_batches,
+        )
+        return [text]
+
+    logger.warning(
+        "Batch %d/%d: entry of %d chars translated as %d text chunks",
+        batch_idx + 1,
+        total_batches,
+        len(text),
+        len(chunks),
+    )
+    translated: list[str] = []
+    for group in _pack_chunks(chunks, max_chars):
+        translated += _translate_with_retry(
+            backend,
+            group,
+            system_prompt,
+            max_retries,
+            retry_delay,
+            batch_idx,
+            total_batches,
+            max_chars,
+        )
+    return ["".join(translated)]
+
+
+def _pack_chunks(chunks: list[str], max_chars: int) -> list[list[str]]:
+    """Greedily group chunks so each request stays within the chars budget."""
+    groups: list[list[str]] = []
+    current: list[str] = []
+    current_chars = 0
+
+    for chunk in chunks:
+        if current and current_chars + len(chunk) > max_chars:
+            groups.append(current)
+            current = []
+            current_chars = 0
+        current.append(chunk)
+        current_chars += len(chunk)
+
+    if current:
+        groups.append(current)
+
+    return groups
 
 
 # ~2000 chars ≈ 500 tokens — safe chunk size for a single translation call

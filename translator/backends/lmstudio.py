@@ -50,6 +50,10 @@ class LMStudioBackend(TranslatorBackend):
     def name(self) -> str:
         return f"lmstudio/{self.model}"
 
+    @property
+    def context_length(self) -> int:
+        return self._context_length
+
     def ensure_model_loaded(self) -> None:
         """Check if model is loaded; load it if not. Blocks until ready."""
         loaded, ctx = self._model_status()
