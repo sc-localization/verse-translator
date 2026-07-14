@@ -96,6 +96,21 @@ def test_corrupted_variable_falls_back_to_source():
     assert "ui_target=Target: ~mission(foo)" in output_path.read_text(encoding="utf-8")
 
 
+def test_real_newlines_normalized_back_to_escapes():
+    # Source holds the literal two-char \n escape; the mock model returns
+    # a real newline for it, as local models often do in JSON output
+    config = _var_config(_write_tmp("ui_multi=First line\\nSecond line\n"))
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.return_value = ["Первая строка\nВторая строка"]
+
+    output_path = run(config, backend)
+
+    backend.translate_batch.assert_called_once()  # no corruption retry
+    content = output_path.read_text(encoding="utf-8")
+    assert "ui_multi=Первая строка\\nВторая строка" in content
+
+
 def test_split_text_never_cuts_variables():
     sentence = "The quick brown fox jumps over the lazy dog. "
     text = (sentence * 20 + "~mission(alpha|SomeLongContract) ") * 5

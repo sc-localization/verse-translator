@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import Counter
 from pathlib import Path
 
 from tqdm import tqdm
@@ -249,7 +250,8 @@ def _translate_with_retry(
             logger.debug(
                 "Batch %d/%d — attempt %d", batch_idx + 1, total_batches, attempt
             )
-            return backend.translate_batch(values, system_prompt)
+            translated = backend.translate_batch(values, system_prompt)
+            return [_normalize_newlines(t) for t in translated]
         except ContextTooLongError:
             if len(values) == 1:
                 return _translate_in_chunks(
@@ -307,6 +309,15 @@ def _translate_with_retry(
     ) from last_exc
 
 
+def _normalize_newlines(text: str) -> str:
+    """Turn real newlines from the model back into the literal \\n escape.
+
+    Values in global.ini are single-line: the file stores the two-character
+    escape, but models routinely emit a real newline for it in JSON output.
+    """
+    return text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+
+
 def _variables_preserved(src: str, dst: str) -> bool:
     return sorted(extract_variables(src)) == sorted(extract_variables(dst))
 
@@ -332,10 +343,14 @@ def _repair_broken_variables(
     for i, (src, dst) in enumerate(zip(values, translated)):
         if _variables_preserved(src, dst):
             continue
+        src_vars = Counter(extract_variables(src))
+        dst_vars = Counter(extract_variables(dst))
         logger.warning(
-            "Batch %d/%d: game variables corrupted in translation, retrying entry",
+            "Batch %d/%d: game variables corrupted (lost: %s, added: %s), retrying entry",
             batch_idx + 1,
             total_batches,
+            dict(src_vars - dst_vars) or "-",
+            dict(dst_vars - src_vars) or "-",
         )
         retry = _translate_with_retry(
             backend,

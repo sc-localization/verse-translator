@@ -181,7 +181,9 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
         raise ContextTooLongError("Response truncated: no closing ']' found")
 
     try:
-        parsed, _ = json.JSONDecoder().raw_decode(output, start)
+        # strict=False: models emit raw newlines inside strings for the \n
+        # escape; the pipeline normalizes them back after parsing
+        parsed, _ = json.JSONDecoder(strict=False).raw_decode(output, start)
     except json.JSONDecodeError as exc:
         # Splitting the batch often resolves model confusion that causes bad JSON
         raise ContextTooLongError(f"JSON decoding failed: {exc}") from exc
