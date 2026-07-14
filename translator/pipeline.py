@@ -99,7 +99,16 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
         backend.ensure_model_loaded()
 
     system_prompt = build_system_prompt(config)
-    batches = make_batches(misses, config.batch_size)
+
+    # Identical source strings are translated once and fanned out to every key
+    groups: dict[str, list[RawLine]] = {}
+    for entry in misses:
+        groups.setdefault(entry.value or "", []).append(entry)
+    unique = [group[0] for group in groups.values()]
+    if len(unique) < len(misses):
+        print(f"  Dedup:    {len(misses)} entries → {len(unique)} unique strings\n")
+
+    batches = make_batches(unique, config.batch_size)
     total_batches = len(batches)
 
     with tqdm(
@@ -119,13 +128,16 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
                 batch_idx=batch_idx,
                 total_batches=total_batches,
             )
-            for entry, dst in zip(batch, translated):
-                entry.translated = dst
-                if entry.key:
-                    cache[entry.key] = {"src": entry.value or "", "dst": dst}
+            done: list[RawLine] = []
+            for representative, dst in zip(batch, translated):
+                for entry in groups[representative.value or ""]:
+                    entry.translated = dst
+                    if entry.key:
+                        cache[entry.key] = {"src": entry.value or "", "dst": dst}
+                    done.append(entry)
             save_cache(cache_path, cache)
-            assemble_entries(batch, config.output_path, append=True)
-            bar.update(len(batch))
+            assemble_entries(done, config.output_path, append=True)
+            bar.update(len(done))
             bar.set_postfix(batch=f"{batch_idx + 1}/{total_batches}")
 
     save_cache(cache_path, cache)
