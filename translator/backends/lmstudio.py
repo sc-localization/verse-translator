@@ -43,6 +43,8 @@ class LMStudioBackend(TranslatorBackend):
         self._base_url = f"http://{host}:{port}"
         self._context_length = context_length
         self._max_output_tokens = max_output_tokens
+        # Reasoning wastes tokens on translation; dropped if the model rejects it
+        self._reasoning: str | None = "off"
 
     @property
     def name(self) -> str:
@@ -115,21 +117,21 @@ class LMStudioBackend(TranslatorBackend):
 
     def translate_batch(self, values: list[str], system_prompt: str) -> list[str]:
         user_content = _USER_INSTRUCTION + json.dumps(values, ensure_ascii=False)
-        body = json.dumps(
-            {
-                "model": self.model,
-                "system_prompt": system_prompt,
-                "input": user_content,
-                "temperature": 0.3,
-                "context_length": self._context_length,
-                "max_output_tokens": self._max_output_tokens,
-                "store": False,
-            }
-        ).encode()
+        payload: dict[str, object] = {
+            "model": self.model,
+            "system_prompt": system_prompt,
+            "input": user_content,
+            "temperature": 0.3,
+            "context_length": self._context_length,
+            "max_output_tokens": self._max_output_tokens,
+            "store": False,
+        }
+        if self._reasoning is not None:
+            payload["reasoning"] = self._reasoning
 
         req = urllib.request.Request(
             f"{self._base_url}/api/v1/chat",
-            data=body,
+            data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"},
         )
         try:
@@ -137,6 +139,17 @@ class LMStudioBackend(TranslatorBackend):
                 data = json.loads(resp.read())
         except urllib.error.HTTPError as e:
             body_text = e.read().decode(errors="replace")
+            if (
+                e.code == 400
+                and self._reasoning is not None
+                and "reasoning" in body_text.lower()
+            ):
+                logger.warning(
+                    "Model %s rejected the 'reasoning' parameter, retrying without it",
+                    self.model,
+                )
+                self._reasoning = None
+                return self.translate_batch(values, system_prompt)
             if e.code == 400 and "context" in body_text.lower():
                 raise ContextTooLongError(body_text) from e
             raise RuntimeError(f"LM Studio {e.code}: {body_text}") from e
