@@ -24,7 +24,7 @@ from translator.cache import (
     save as save_cache,
 )
 from translator.config import Config
-from translator.models import LineKind, ParsedIni, RawLine
+from translator.models import LineKind, ParsedIni, RawLine, extract_variables
 from translator.parser import assemble_entries, parse
 from translator.versioning import bump_version
 
@@ -126,6 +126,17 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
             translated = _translate_with_retry(
                 backend=backend,
                 values=values,
+                system_prompt=system_prompt,
+                max_retries=config.max_retries,
+                retry_delay=config.retry_delay_seconds,
+                batch_idx=batch_idx,
+                total_batches=total_batches,
+                max_chars=max_chars,
+            )
+            translated = _repair_broken_variables(
+                backend=backend,
+                values=values,
+                translated=translated,
                 system_prompt=system_prompt,
                 max_retries=config.max_retries,
                 retry_delay=config.retry_delay_seconds,
@@ -288,6 +299,59 @@ def _translate_with_retry(
     raise RuntimeError(
         f"Batch {batch_idx + 1}/{total_batches} failed after {max_retries} attempts"
     ) from last_exc
+
+
+def _variables_preserved(src: str, dst: str) -> bool:
+    return sorted(extract_variables(src)) == sorted(extract_variables(dst))
+
+
+def _repair_broken_variables(
+    backend: TranslatorBackend,
+    values: list[str],
+    translated: list[str],
+    system_prompt: str,
+    max_retries: int,
+    retry_delay: float,
+    batch_idx: int,
+    total_batches: int,
+    max_chars: int,
+) -> list[str]:
+    """Re-translate entries whose game variables got corrupted.
+
+    If the retry is corrupted too, keep the original source text — broken
+    variables crash or garble the game, an untranslated line does not.
+    """
+    repaired = list(translated)
+
+    for i, (src, dst) in enumerate(zip(values, translated)):
+        if _variables_preserved(src, dst):
+            continue
+        logger.warning(
+            "Batch %d/%d: game variables corrupted in translation, retrying entry",
+            batch_idx + 1,
+            total_batches,
+        )
+        retry = _translate_with_retry(
+            backend,
+            [src],
+            system_prompt,
+            max_retries,
+            retry_delay,
+            batch_idx,
+            total_batches,
+            max_chars,
+        )[0]
+        if _variables_preserved(src, retry):
+            repaired[i] = retry
+        else:
+            logger.warning(
+                "Batch %d/%d: variables still corrupted after retry, keeping original",
+                batch_idx + 1,
+                total_batches,
+            )
+            repaired[i] = src
+
+    return repaired
 
 
 def _translate_in_chunks(

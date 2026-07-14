@@ -51,3 +51,45 @@ def test_pipeline_calls_backend_and_writes_output():
     backend.translate_batch.assert_called_once()
     args = backend.translate_batch.call_args[0]
     assert args[0] == ["Loading screen", "Hello pilot"]
+
+
+VAR_INI = "ui_target=Target: ~mission(foo)\n"
+
+
+def _var_config(input_path: Path) -> Config:
+    return Config(
+        input_path=input_path,
+        output_dir=Path(tempfile.mkdtemp()),
+        version="TEST",
+        batch_size=10,
+    )
+
+
+def test_corrupted_variable_retried_then_fixed():
+    config = _var_config(_write_tmp(VAR_INI))
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = [
+        ["Цель: ~миссия(foo)"],  # variable translated — corrupted
+        ["Цель: ~mission(foo)"],  # retry preserves it
+    ]
+
+    output_path = run(config, backend)
+
+    assert backend.translate_batch.call_count == 2
+    assert "ui_target=Цель: ~mission(foo)" in output_path.read_text(encoding="utf-8")
+
+
+def test_corrupted_variable_falls_back_to_source():
+    config = _var_config(_write_tmp(VAR_INI))
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = [
+        ["Цель: ~миссия(foo)"],
+        ["Цель: ~миссия(foo)"],  # retry corrupted too — keep English
+    ]
+
+    output_path = run(config, backend)
+
+    assert backend.translate_batch.call_count == 2
+    assert "ui_target=Target: ~mission(foo)" in output_path.read_text(encoding="utf-8")

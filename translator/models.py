@@ -60,6 +60,11 @@ _VAR_RE = re.compile(
 _FLUFF_RE = re.compile(r"\d+\.\d+(?:\s+\d+\.\d+){3,}")
 
 
+def extract_variables(value: str) -> list[str]:
+    """Game variables/placeholders that must survive translation unchanged."""
+    return _VAR_RE.findall(value)
+
+
 def _is_translatable(value: str) -> bool:
     if not value.strip():
         return False
