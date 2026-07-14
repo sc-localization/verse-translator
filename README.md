@@ -44,21 +44,64 @@ cp verse-translator.example.toml verse-translator.toml
 
 Make sure the LM Studio local server is running before starting (default port 1234). The model is loaded automatically if needed.
 
-## Speeding up translation with a draft model
+## Tuning LM Studio for speed
+
+Translation speed is dominated by token generation, so a misconfigured model load easily costs
+you a 10× slowdown. Symptom: single-digit `tg = ... t/s` in the LM Studio server logs — that
+means part of the model runs on the CPU or spilled into shared system memory.
+
+All settings below live in **My Models → gear icon on the model → Edit default load settings**.
+Default load settings matter because the pipeline auto-loads the model through the LM Studio
+API — per-session tweaks on an already loaded instance are lost on the next load. Some options
+require **Power User** mode (selector at the bottom of the LM Studio window).
+
+### Recommended load settings
+
+Reference setup: `qwen/qwen3-14b` Q4_K_M on an RTX 4070 12 GB — went from ~5 t/s to ~43 t/s
+with these settings (and ~60+ t/s with a draft model on top).
+
+| Setting                       | Recommended        | Why                                                                                                     |
+| ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Context Length                | 8192               | The pipeline reads the real context size via API and packs batches to fit — bigger is not required     |
+| GPU Offload (layers)          | **maximum**        | Any layer left on the CPU throttles the whole generation; if the max doesn't fit, use a smaller quant  |
+| Max Concurrent Predictions    | **1**              | The pipeline sends requests strictly one at a time; extra slots multiply KV-cache memory and cause prompt re-processing on slot switches |
+| K Cache / V Cache Quantization| q8_0               | Halves KV-cache memory at negligible quality cost (requires Flash Attention)                            |
+| Flash Attention               | on                 | Faster attention, required for KV-cache quantization                                                    |
+| Speculative Decoding          | same-family draft  | See below — ~1.5–2× extra on translation workloads                                                      |
+
+**Fitting the model into VRAM is the whole game.** Weights + KV cache + draft model + ~1 GB
+that Windows itself keeps on the GPU must stay under your VRAM total. If it doesn't fit, the
+NVIDIA driver silently spills into system RAM and generation crawls instead of failing.
+Rough guide: 12 GB → 14B Q4; 8 GB → 8B Q4; 6 GB → 4B Q4. A smaller model fully on the GPU
+always beats a bigger one that spills.
+
+### Draft model (speculative decoding)
 
 LM Studio supports [speculative decoding](https://lmstudio.ai/docs/app/advanced/speculative-decoding): a small "draft" model predicts tokens ahead and the main model only verifies them. Translation output is highly predictable, so acceptance rates are high — expect roughly 1.5–2× faster generation with identical output quality.
 
 Setup (one-time, in the LM Studio UI):
 
 1. Download a draft model from the same family as the main one — for `qwen/qwen3-14b` use `qwen3-0.6b` (the draft must share the main model's vocabulary, so stick to the same model line).
-2. Switch LM Studio to **Power User** mode (selector at the bottom of the window) — otherwise the Speculative Decoding section is hidden.
-3. Open **My Models** → gear icon on `qwen/qwen3-14b` (*Edit default load settings*) → **Speculative Decoding** → pick `qwen3-0.6b` as the draft model.
+2. Switch LM Studio to **Power User** mode — otherwise the Speculative Decoding section is hidden.
+3. In the model's default load settings → **Speculative Decoding** → pick `qwen3-0.6b` as the draft model.
 
-Because this is saved as a default load setting, it also applies when the pipeline loads the model itself through the LM Studio API — no code or config changes needed here.
+**Note on VRAM:** the draft model needs ~0.5–1 GB on top of the main model. Get the main model
+running fast first, then add the draft — if adding it pushes you over the VRAM budget, the gain
+turns into a loss.
 
-To verify it works, check the server logs in LM Studio: responses include `draft_model` and `accepted_draft_tokens_count` fields, and `tokens_per_second` goes up.
+### Verifying the setup
 
-**Note on VRAM:** the draft model needs ~0.5–1 GB on top of the main model. If the 14B barely fits in your GPU memory, make sure adding the draft doesn't push main-model layers to the CPU — that would cancel out the gain.
+Run a translation and watch two places:
+
+- **LM Studio server logs**: `tg = ... t/s` should be in the dozens, not single digits. With a
+  draft model active, responses also report `draft_model` and `accepted_draft_tokens_count`.
+- **`nvidia-smi -l 1` during generation**: GPU utilization should sit at 85–100% with power
+  near its cap, and memory usage must stay *below* the total — a full-to-the-brim readout
+  means you are already spilling into system RAM.
+
+If generation is still slow with everything on the GPU, set *CUDA – Sysmem Fallback Policy* to
+*Prefer No Sysmem Fallback* in the NVIDIA Control Panel: overflow then fails loudly instead of
+silently degrading, which makes misconfiguration obvious.
 
 ## Configuration
 
