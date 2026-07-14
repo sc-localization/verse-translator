@@ -160,7 +160,7 @@ Entries whose values consist entirely of variables are skipped and copied as-is.
 
 ## Incremental translation
 
-After each run a `.translation_cache.json` file is saved next to the output `global.ini`.
+After each run a `.translation_cache.jsonl` file is saved next to the output `global.ini`.
 On the next run:
 
 - unchanged lines → taken from cache, no AI call
