@@ -9,3 +9,10 @@ pre-commit:
       glob: "*.py"
       run: uv run ruff format {staged_files}
       stage_fixed: true
+    typecheck:
+      glob: "*.py"
+      run: uv run mypy translator
+    test:
+      glob: "*.py"
+      run: uv run pytest
+
