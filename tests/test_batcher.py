@@ -23,3 +23,20 @@ def test_multiple_batches():
 
 def test_empty():
     assert make_batches([], batch_size=50) == []
+
+
+def test_char_budget_splits_batches():
+    entries = [_entry(f"k{i}", "x" * 40) for i in range(10)]
+    batches = make_batches(entries, batch_size=50, max_chars=100)
+    assert len(batches) == 5
+    assert all(len(b) == 2 for b in batches)
+
+
+def test_oversized_entry_gets_own_batch():
+    entries = [
+        _entry("k0", "short"),
+        _entry("k1", "y" * 500),
+        _entry("k2", "short"),
+    ]
+    batches = make_batches(entries, batch_size=50, max_chars=100)
+    assert [len(b) for b in batches] == [1, 1, 1]

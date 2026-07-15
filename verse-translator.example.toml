@@ -9,8 +9,7 @@
 dir = "../sc-translations/translations"
 
 [defaults]
-backend = "lmstudio"     # ollama | lmstudio
-model = "qwen2.5-coder-14b-instruct"
+model = "qwen/qwen3-14b"
 version = "LIVE"         # LIVE | PTU | HOTFIX
 source_lang = "English"
 target_lang = "Russian"

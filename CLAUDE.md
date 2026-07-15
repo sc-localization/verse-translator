@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**verse-translator** — pipeline for translating Star Citizen `global.ini` using local LLMs (LM Studio / Ollama). Outputs ready-to-deploy translation files for **lingvo-injector** server.
+**verse-translator** — pipeline for translating Star Citizen `global.ini` using local LLMs via LM Studio. Outputs ready-to-deploy translation files for **lingvo-injector** server.
 
 ## Commands
 
@@ -17,17 +17,16 @@ uv run pytest tests/             # Run tests
 ```
 global.ini (EN)
   → parser: split into batches
-  → LM Studio / Ollama: translate each batch with SC glossary
+  → LM Studio: translate each batch
   → assembler: merge back into global.ini (RU)
   → output: server/translations/{VERSION}/ru/global.ini
 ```
 
 ## Key Design Decisions
 
-- Default backend: LM Studio with `qwen2.5-coder-14b-instruct`; Ollama as alternative
+- Single backend: LM Studio with `qwen/qwen3-14b`
 - Preserves INI format: `key=value`, comments (`; ...`), empty lines
 - Game variables (`~mission()`, `@ui_`, `%ls`, etc.) must NOT be translated
-- SC glossary injected into every batch prompt
 - Output path mirrors lingvo-injector's `server/translations/` structure
 
 ## Linked Projects

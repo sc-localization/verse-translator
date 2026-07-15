@@ -6,7 +6,7 @@
 
 # verse-translator
 
-Pipeline for translating Star Citizen `global.ini` localization files using AI CLI agents and local models. Automates what you'd otherwise do manually: split the file into batches, send each batch with a prompt to an AI tool, collect responses, and assemble the translated file.
+Pipeline for translating Star Citizen `global.ini` localization files using local models via LM Studio. Automates what you'd otherwise do manually: split the file into batches, send each batch with a prompt to the model, collect responses, and assemble the translated file.
 
 Translated files are meant to be published to [sc-translations](https://github.com/sc-localization/sc-translations) and served to users via jsDelivr CDN.
 
@@ -25,12 +25,9 @@ global.ini (EN)
 
 On subsequent runs only new or changed lines are sent to the model — everything else is taken from cache.
 
-## Supported backends
+## Backend
 
-| Backend    | How it works               | Auth                |
-| ---------- | -------------------------- | ------------------- |
-| `lmstudio` | HTTP `localhost:1234`      | None — runs locally |
-| `ollama`   | `ollama run <model> "..."` | None — runs locally |
+Translation runs through [LM Studio](https://lmstudio.ai) (HTTP on `localhost:1234`, no auth — everything stays local). The pipeline loads the model via the LM Studio API automatically if it is not loaded yet.
 
 ## Setup
 
@@ -45,10 +42,66 @@ uv sync
 cp verse-translator.example.toml verse-translator.toml
 ```
 
-Make sure your local model server is running before starting:
+Make sure the LM Studio local server is running before starting (default port 1234). The model is loaded automatically if needed.
 
-- **lmstudio**: [lmstudio.ai](https://lmstudio.ai) — load a model and start the local server in the UI (default port 1234)
-- **ollama**: [ollama.com](https://ollama.com) — `ollama pull qwen2.5:14b`
+## Tuning LM Studio for speed
+
+Translation speed is dominated by token generation, so a misconfigured model load easily costs
+you a 10× slowdown. Symptom: single-digit `tg = ... t/s` in the LM Studio server logs — that
+means part of the model runs on the CPU or spilled into shared system memory.
+
+All settings below live in **My Models → gear icon on the model → Edit default load settings**.
+Default load settings matter because the pipeline auto-loads the model through the LM Studio
+API — per-session tweaks on an already loaded instance are lost on the next load. Some options
+require **Power User** mode (selector at the bottom of the LM Studio window).
+
+### Recommended load settings
+
+Reference setup: `qwen/qwen3-14b` Q4_K_M on an RTX 4070 12 GB — went from ~5 t/s to ~43 t/s
+with these settings (and ~60+ t/s with a draft model on top).
+
+| Setting                       | Recommended        | Why                                                                                                     |
+| ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Context Length                | 8192               | The pipeline reads the real context size via API and packs batches to fit — bigger is not required     |
+| GPU Offload (layers)          | **maximum**        | Any layer left on the CPU throttles the whole generation; if the max doesn't fit, use a smaller quant  |
+| Max Concurrent Predictions    | **1**              | The pipeline sends requests strictly one at a time; extra slots multiply KV-cache memory and cause prompt re-processing on slot switches |
+| K Cache / V Cache Quantization| q8_0               | Halves KV-cache memory at negligible quality cost (requires Flash Attention)                            |
+| Flash Attention               | on                 | Faster attention, required for KV-cache quantization                                                    |
+| Speculative Decoding          | same-family draft  | See below — ~1.5–2× extra on translation workloads                                                      |
+
+**Fitting the model into VRAM is the whole game.** Weights + KV cache + draft model + ~1 GB
+that Windows itself keeps on the GPU must stay under your VRAM total. If it doesn't fit, the
+NVIDIA driver silently spills into system RAM and generation crawls instead of failing.
+Rough guide: 12 GB → 14B Q4; 8 GB → 8B Q4; 6 GB → 4B Q4. A smaller model fully on the GPU
+always beats a bigger one that spills.
+
+### Draft model (speculative decoding)
+
+LM Studio supports [speculative decoding](https://lmstudio.ai/docs/app/advanced/speculative-decoding): a small "draft" model predicts tokens ahead and the main model only verifies them. Translation output is highly predictable, so acceptance rates are high — expect roughly 1.5–2× faster generation with identical output quality.
+
+Setup (one-time, in the LM Studio UI):
+
+1. Download a draft model from the same family as the main one — for `qwen/qwen3-14b` use `qwen3-0.6b` (the draft must share the main model's vocabulary, so stick to the same model line).
+2. Switch LM Studio to **Power User** mode — otherwise the Speculative Decoding section is hidden.
+3. In the model's default load settings → **Speculative Decoding** → pick `qwen3-0.6b` as the draft model.
+
+**Note on VRAM:** the draft model needs ~0.5–1 GB on top of the main model. Get the main model
+running fast first, then add the draft — if adding it pushes you over the VRAM budget, the gain
+turns into a loss.
+
+### Verifying the setup
+
+Run a translation and watch two places:
+
+- **LM Studio server logs**: `tg = ... t/s` should be in the dozens, not single digits. With a
+  draft model active, responses also report `draft_model` and `accepted_draft_tokens_count`.
+- **`nvidia-smi -l 1` during generation**: GPU utilization should sit at 85–100% with power
+  near its cap, and memory usage must stay *below* the total — a full-to-the-brim readout
+  means you are already spilling into system RAM.
+
+If generation is still slow with everything on the GPU, set *CUDA – Sysmem Fallback Policy* to
+*Prefer No Sysmem Fallback* in the NVIDIA Control Panel: overflow then fails loudly instead of
+silently degrading, which makes misconfiguration obvious.
 
 ## Configuration
 
@@ -64,8 +117,7 @@ cp verse-translator.example.toml verse-translator.toml
 dir = "../sc-translations/translations"  # path to your local clone of sc-translations
 
 [defaults]
-backend = "lmstudio"
-model = "qwen2.5-coder-14b-instruct"
+model = "qwen/qwen3-14b"
 version = "LIVE"
 target_lang = "Russian"
 target_lang_code = "ru"
@@ -101,14 +153,11 @@ https://cdn.jsdelivr.net/gh/sc-localization/sc-translations@main/translations/{V
 # Uses settings from verse-translator.toml
 uv run python -m translator input/global.ini
 
-# Override backend
-uv run python -m translator input/global.ini --backend ollama --model qwen2.5:14b
-
 # Override output dir (e.g. for local testing)
 uv run python -m translator input/global.ini --output-dir output/
 
-# LM Studio with a specific model (server must be running on port 1234)
-uv run python -m translator input/global.ini --backend lmstudio --model qwen2.5-coder-14b-instruct
+# Use a specific model (server must be running on port 1234)
+uv run python -m translator input/global.ini --model qwen/qwen3-14b
 
 # Translate to German
 uv run python -m translator input/global.ini --target-lang German --target-lang-code de
@@ -141,8 +190,7 @@ positional:
   input                  Path to source global.ini (default: global.ini)
 
 options:
-  --backend              ollama | lmstudio  (default from toml or lmstudio)
-  --model                Model name; each backend has a sensible default
+  --model                Model name  (default from toml or qwen/qwen3-14b)
   --batch-size           Lines per AI call  (default from toml or 50)
   --version              Game version tag for output path  (default from toml or LIVE)
   --output-dir           Base output directory  (default from toml or output/translations)
@@ -171,7 +219,7 @@ Entries whose values consist entirely of variables are skipped and copied as-is.
 
 ## Incremental translation
 
-After each run a `.translation_cache.json` file is saved next to the output `global.ini`.
+After each run a `.translation_cache.jsonl` file is saved next to the output `global.ini`.
 On the next run:
 
 - unchanged lines → taken from cache, no AI call

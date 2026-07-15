@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from translator.backends.base import TranslatorBackend
 from translator.cache import cache_path_for
+from translator.cache import load as load_cache
 from translator.config import Config
 from translator.pipeline import run
 
@@ -115,6 +116,39 @@ def test_cache_persisted_to_disk():
 
     cache_file = cache_path_for(config.output_path)
     assert cache_file.exists()
-    data = json.loads(cache_file.read_text())
+    data = load_cache(cache_file)
     assert data["ui_loading"]["src"] == "Loading screen"
     assert data["ui_loading"]["dst"] == "Экран загрузки"
+
+
+def test_load_skips_truncated_trailing_line():
+    """A crash mid-append can leave a partial final JSONL line; load() must
+    not brick every future run over it — it should drop the bad line."""
+    cache_file = Path(tempfile.mktemp(suffix=".jsonl"))
+    good = json.dumps({"key": "ui_hello", "src": "Hello pilot", "dst": "Привет"})
+    cache_file.write_text(good + "\n" + '{"key": "ui_loa', encoding="utf-8")
+
+    data = load_cache(cache_file)
+
+    assert data == {"ui_hello": {"src": "Hello pilot", "dst": "Привет"}}
+
+
+def test_legacy_cache_is_migrated_to_jsonl_on_load():
+    """The legacy .json cache must survive an interrupted first run on the
+    new JSONL format — it should be migrated to .jsonl immediately on load,
+    not only after a full run completes."""
+    out_dir = Path(tempfile.mkdtemp())
+    jsonl_path = out_dir / ".translation_cache.jsonl"
+    legacy_path = jsonl_path.with_suffix(".json")
+    legacy_path.write_text(
+        json.dumps({"ui_hello": {"src": "Hello pilot", "dst": "Привет"}}),
+        encoding="utf-8",
+    )
+
+    data = load_cache(jsonl_path)
+
+    assert data == {"ui_hello": {"src": "Hello pilot", "dst": "Привет"}}
+    assert jsonl_path.exists()
+    # Re-reading from disk (as a fresh process after a crash would) must see
+    # the migrated data without the legacy file.
+    assert load_cache(jsonl_path) == data
