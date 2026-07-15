@@ -11,8 +11,8 @@ pre-commit:
       stage_fixed: true
     typecheck:
       glob: "*.py"
-      run: uv run mypy translator
+      run: sh -c 'uv run mypy translator'
     test:
       glob: "*.py"
-      run: uv run pytest
+      run: sh -c 'uv run pytest'
 
