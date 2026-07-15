@@ -1,9 +1,12 @@
+import json
 import tempfile
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from translator.backends.base import TranslatorBackend
+from translator.backends.base import ContextTooLongError, TranslatorBackend
+from translator.cache import cache_path_for
+from translator.cache import load as load_cache
 from translator.config import Config
 from translator.models import extract_variables
 from translator.pipeline import _split_text, run
@@ -111,6 +114,73 @@ def test_real_newlines_normalized_back_to_escapes():
     assert "ui_multi=Первая строка\\nВторая строка" in content
 
 
+def test_fallback_to_source_is_not_cached():
+    # A permanently-corrupted variable falls back to the English source; that
+    # fallback must not be cached, so the entry is retried on the next run
+    # instead of being pinned to English forever.
+    config = _var_config(_write_tmp(VAR_INI))
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = [
+        ["Цель: ~миссия(foo)"],
+        ["Цель: ~миссия(foo)"],  # retry corrupted too — keep English
+    ]
+
+    run(config, backend)
+
+    cache = load_cache(cache_path_for(config.output_path))
+    assert "ui_target" not in cache
+
+
+def test_malformed_json_is_retried_before_falling_back():
+    # A single short entry whose response fails JSON decoding raises
+    # ContextTooLongError from the backend, but it isn't a real context
+    # overflow (the entry fits comfortably) — it must be retried like any
+    # other transient failure, not immediately handed to chunk-splitting.
+    config = _var_config(_write_tmp(VAR_INI))
+    config.retry_delay_seconds = 0
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = [
+        ContextTooLongError("JSON decoding failed: bad token"),
+        ["Цель: ~mission(foo)"],
+    ]
+
+    output_path = run(config, backend)
+
+    assert backend.translate_batch.call_count == 2
+    assert "ui_target=Цель: ~mission(foo)" in output_path.read_text(encoding="utf-8")
+
+
+def test_fully_cached_run_still_bumps_version():
+    # A resume/regenerate run where every entry is already cached must still
+    # bump versions.json, matching the unconditional bump on a normal run.
+    from translator.versioning import versions_path_for
+
+    input_path = _write_tmp(SAMPLE_INI)
+    out_dir = Path(tempfile.mkdtemp())
+    config = Config(
+        input_path=input_path, output_dir=out_dir, version="TEST", batch_size=10
+    )
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.return_value = ["Экран загрузки", "Привет, пилот"]
+
+    run(config, backend)
+    versions_file = versions_path_for(out_dir)
+    first_version = json.loads(versions_file.read_text())["TEST"]["languages"]["ru"][
+        "version"
+    ]
+
+    # Second run: nothing changed, every entry is a cache hit.
+    run(config, backend)
+    second_version = json.loads(versions_file.read_text())["TEST"]["languages"]["ru"][
+        "version"
+    ]
+
+    assert second_version != first_version
+
+
 def test_split_text_never_cuts_variables():
     sentence = "The quick brown fox jumps over the lazy dog. "
     text = (sentence * 20 + "~mission(alpha|SomeLongContract) ") * 5
@@ -121,6 +191,17 @@ def test_split_text_never_cuts_variables():
     assert "".join(chunks) == text
     total_vars = sum(len(extract_variables(c)) for c in chunks)
     assert total_vars == len(extract_variables(text))
+
+
+def test_split_text_giant_variable_spanning_midsection_is_not_cut():
+    # A single game variable bigger than the chunk size leaves no valid cut
+    # point outside it — splitting must be refused rather than cut through it.
+    var = "~mission(" + "x" * 3990 + ")"
+
+    chunks = _split_text(var)
+
+    assert chunks == [var]
+    assert extract_variables("".join(chunks)) == extract_variables(var)
 
 
 def test_split_text_hard_cut_avoids_variable():

@@ -66,13 +66,12 @@ class LMStudioBackend(TranslatorBackend):
         self._request_load()
 
         ctx = None
-        elapsed = 0.0
-        while elapsed < _LOAD_TIMEOUT:
+        deadline = time.monotonic() + _LOAD_TIMEOUT
+        while time.monotonic() < deadline:
             loaded, ctx = self._model_status()
             if loaded:
                 break
             time.sleep(_LOAD_POLL_INTERVAL)
-            elapsed += _LOAD_POLL_INTERVAL
         else:
             raise RuntimeError(
                 f"Timed out waiting for model {self.model!r} to load in LM Studio "
@@ -118,6 +117,11 @@ class LMStudioBackend(TranslatorBackend):
         except urllib.error.HTTPError as e:
             body_text = e.read().decode(errors="replace")
             raise RuntimeError(f"LM Studio failed to load model: {body_text}") from e
+        except urllib.error.URLError as e:
+            # A slow/unresponsive load endpoint (e.g. large model, busy
+            # server) shouldn't abort the run — the poll loop right after
+            # this call is the actual source of truth for "is it loaded".
+            logger.warning("LM Studio load request did not complete: %s", e)
 
     def translate_batch(self, values: list[str], system_prompt: str) -> list[str]:
         user_content = _USER_INSTRUCTION + json.dumps(values, ensure_ascii=False)
@@ -187,6 +191,9 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
     except json.JSONDecodeError as exc:
         # Splitting the batch often resolves model confusion that causes bad JSON
         raise ContextTooLongError(f"JSON decoding failed: {exc}") from exc
+
+    if not isinstance(parsed, list) or not all(isinstance(v, str) for v in parsed):
+        raise ValueError(f"Expected a JSON array of strings, got: {parsed!r}")
 
     if len(parsed) != expected_len:
         raise ValueError(f"Expected {expected_len} translations, got {len(parsed)}")

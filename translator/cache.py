@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TextIO, TypedDict
+
+logger = logging.getLogger(__name__)
 
 
 class CacheEntry(TypedDict):
@@ -17,15 +20,28 @@ def load(path: Path) -> Cache:
     if path.exists():
         cache: Cache = {}
         with path.open(encoding="utf-8") as f:
-            for line in f:
+            for lineno, line in enumerate(f, start=1):
                 line = line.strip()
                 if not line:
                     continue
-                record = json.loads(line)
-                cache[record["key"]] = {"src": record["src"], "dst": record["dst"]}
+                try:
+                    record = json.loads(line)
+                    cache[record["key"]] = {"src": record["src"], "dst": record["dst"]}
+                except (json.JSONDecodeError, KeyError) as exc:
+                    # A hard kill mid-append can leave a truncated last line —
+                    # this is the crash-recovery file, so it must never itself
+                    # block recovery. Drop the bad line and keep going.
+                    logger.warning(
+                        "Skipping corrupt cache line %d in %s: %s", lineno, path, exc
+                    )
         return cache
 
-    return _load_legacy(path.with_suffix(".json"))
+    legacy = _load_legacy(path.with_suffix(".json"))
+    if legacy:
+        # Migrate immediately so an interrupted run doesn't leave a jsonl
+        # cache that shadows the legacy file and hides its translations.
+        save(path, legacy)
+    return legacy
 
 
 def _load_legacy(path: Path) -> Cache:

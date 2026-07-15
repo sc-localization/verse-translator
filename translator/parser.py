@@ -37,9 +37,15 @@ def _classify(raw: str) -> RawLine:
     return RawLine(kind=LineKind.COMMENT, raw=raw)
 
 
-def assemble_entries(entries: list, output_path: Path, append: bool = False) -> None:
-    """Write key=value lines for the given entries. Append or overwrite."""
-    if not entries:
+def assemble_entries(
+    entries: list[RawLine], output_path: Path, append: bool = False
+) -> None:
+    """Write key=value lines for the given entries. Append or overwrite.
+
+    A non-append call always (re)creates the file, even with no entries, so
+    it truncates any stale content left by a previous run.
+    """
+    if not entries and append:
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [e.output() for e in entries]

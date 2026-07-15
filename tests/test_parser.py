@@ -57,6 +57,19 @@ def test_translatable_skips_empty_and_pure_vars():
     assert "ui_var" not in translatable_keys  # pure ~mission()
 
 
+def test_translatable_skips_pure_number_fluff_but_keeps_prose_with_numbers():
+    ini = textwrap.dedent("""\
+        item_fluff=0.5 1.2 2.4 4.8
+        item_prose=Thruster output curve: 0.5 1.2 2.4 4.8
+    """)
+    path = _write_tmp(ini)
+    result = parse(path)
+
+    translatable_keys = {e.key for e in result.translatable_entries()}
+    assert "item_fluff" not in translatable_keys
+    assert "item_prose" in translatable_keys
+
+
 def test_round_trip():
     path = _write_tmp(SAMPLE_INI)
     result = parse(path)
@@ -70,3 +83,23 @@ def test_round_trip():
     assert "ui_loading=Loading..." in written
     assert "ui_hello=Hello pilot" in written
     assert "ui_var=~mission(foo)" in written
+
+
+def test_overwrite_with_no_entries_truncates_stale_file():
+    # A non-append call must always recreate the file, even with zero
+    # entries, so it can't leave a previous run's stale content behind.
+    out_path = Path(tempfile.mktemp(suffix=".ini"))
+    out_path.write_text("stale content from a previous run", encoding="utf-8")
+
+    assemble_entries([], out_path, append=False)
+
+    assert out_path.read_text(encoding="utf-8") == ""
+
+
+def test_append_with_no_entries_is_a_noop():
+    out_path = Path(tempfile.mktemp(suffix=".ini"))
+    out_path.write_text("existing content", encoding="utf-8")
+
+    assemble_entries([], out_path, append=True)
+
+    assert out_path.read_text(encoding="utf-8") == "existing content"

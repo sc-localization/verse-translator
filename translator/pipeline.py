@@ -103,6 +103,15 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     if not misses:
         save_cache(cache_path, cache)
         logger.info("Cache saved to %s", cache_path)
+        new_version = bump_version(
+            config.output_dir, config.version, config.target_lang_code
+        )
+        logger.info(
+            "Version bumped to %s (%s/%s)",
+            new_version,
+            config.version,
+            config.target_lang_code,
+        )
         return config.output_path
 
     if isinstance(backend, LMStudioBackend):
@@ -154,9 +163,14 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
             done: list[RawLine] = []
             new_records: Cache = {}
             for representative, dst in zip(batch, translated):
+                # dst == src means every attempt fell back to the source text
+                # (see _repair_broken_variables / _translate_in_chunks) — do
+                # not cache it, so the entry is retried on the next run
+                # instead of being pinned to English forever.
+                fallback = dst == (representative.value or "")
                 for entry in groups[representative.value or ""]:
                     entry.translated = dst
-                    if entry.key:
+                    if entry.key and not fallback:
                         new_records[entry.key] = {
                             "src": entry.value or "",
                             "dst": dst,
@@ -252,7 +266,23 @@ def _translate_with_retry(
             )
             translated = backend.translate_batch(values, system_prompt)
             return [_normalize_newlines(t) for t in translated]
-        except ContextTooLongError:
+        except ContextTooLongError as exc:
+            if len(values) == 1 and len(values[0]) <= max_chars:
+                # Not a real context overflow (the entry fits the budget) —
+                # the model returned malformed/truncated JSON. Retry like any
+                # other transient failure instead of giving up immediately;
+                # chunk-splitting a short entry can't fix bad JSON output.
+                last_exc = exc
+                logger.warning(
+                    "Batch %d/%d attempt %d failed: %s",
+                    batch_idx + 1,
+                    total_batches,
+                    attempt,
+                    exc,
+                )
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+                continue
             if len(values) == 1:
                 return _translate_in_chunks(
                     backend,
@@ -386,7 +416,11 @@ def _translate_in_chunks(
     max_chars: int,
 ) -> list[str]:
     """Translate one oversized entry as text chunks, rejoined afterwards."""
-    chunks = _split_text(text)
+    # A small model context can push max_chars below the default chunk size;
+    # without this, entries between max_chars and _CHUNK_SIZE never split
+    # and silently ship untranslated (they're too big for one request but
+    # "not big enough" to trigger splitting).
+    chunks = _split_text(text, chunk_size=min(_CHUNK_SIZE, max_chars))
     if len(chunks) == 1:
         logger.warning(
             "Batch %d/%d: single entry could not be split further, keeping original",
@@ -453,14 +487,14 @@ def _pack_chunks(chunks: list[str], max_chars: int) -> list[list[str]]:
 _CHUNK_SIZE = 2000
 
 
-def _split_text(text: str) -> list[str]:
+def _split_text(text: str, chunk_size: int = _CHUNK_SIZE) -> list[str]:
     """Split a long string into translatable chunks at safe boundaries.
 
     Priority: \\n → sentence boundary (. ) → space → hard cut.
     Boundaries never fall inside a game variable — a cut ~func() or <tag>
     cannot be preserved by translation. Chunks rejoin with "".join().
     """
-    if len(text) <= _CHUNK_SIZE:
+    if len(text) <= chunk_size:
         return [text]
 
     spans = variable_spans(text)
@@ -495,7 +529,11 @@ def _split_text(text: str) -> list[str]:
                 best = end if end < len(text) else start
                 break
         if best <= 0 or best >= len(text):
-            best = mid
+            # The nudge couldn't escape the variable (it spans the whole
+            # midsection) — cutting here would still land inside it, which
+            # breaks this function's contract. Give up splitting rather than
+            # cut a variable in half.
+            return [text]
 
     left, right = text[:best], text[best:]
-    return _split_text(left) + _split_text(right)
+    return _split_text(left, chunk_size) + _split_text(right, chunk_size)

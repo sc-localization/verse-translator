@@ -74,12 +74,16 @@ def _is_translatable(value: str) -> bool:
     if not value.strip():
         return False
 
-    if _FLUFF_RE.search(value):
-        return False
-
     stripped = _VAR_RE.sub("", value).strip()
 
     if not stripped:
+        return False
+
+    fluff_match = _FLUFF_RE.search(stripped)
+    # Only skip when the numeric run makes up most of the value — otherwise
+    # prose that happens to end in a few numbers (e.g. "Output curve: 0.5
+    # 1.2 2.4 4.8") would be classified as pure fluff and never translated.
+    if fluff_match and len(fluff_match.group()) >= 0.8 * len(stripped):
         return False
 
     if not re.search(r"[A-Za-z]", stripped):
