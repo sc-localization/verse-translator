@@ -117,7 +117,7 @@ class LMStudioBackend(TranslatorBackend):
         except urllib.error.HTTPError as e:
             body_text = e.read().decode(errors="replace")
             raise RuntimeError(f"LM Studio failed to load model: {body_text}") from e
-        except urllib.error.URLError as e:
+        except (urllib.error.URLError, TimeoutError) as e:
             # A slow/unresponsive load endpoint (e.g. large model, busy
             # server) shouldn't abort the run — the poll loop right after
             # this call is the actual source of truth for "is it loaded".
