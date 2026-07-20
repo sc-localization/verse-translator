@@ -53,7 +53,7 @@ _VAR_RE = re.compile(
     r"|%ls\b"  # %ls
     r"|\\n"  # escape sequences
     r"|\{\d+\}"  # {0} positional
-    r"|<[^>]+>)"  # <tag>
+    r"|<[^\s<>]+>)"  # <tag> (no whitespace/newlines inside — real tags are short IDs)
 )
 
 # Matches SC fluff data: sequences of decimal numbers separated by spaces
