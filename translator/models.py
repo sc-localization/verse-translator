@@ -48,12 +48,15 @@ _SKIP_PREFIXES = ("~", "@")
 _SKIP_ONLY_VARS = True  # if value has no Latin/Cyrillic words after stripping vars
 
 _VAR_RE = re.compile(
-    r"(~\w+\([^)]*\)"  # ~mission(...)
+    r"(#~\w+\([^)]*\)"  # #~mission(...)
+    r"|~\w+\s*\([^)]*\)"  # ~mission(...), ~mission (...)
     r"|@\w+"  # @ui_label
-    r"|%ls\b"  # %ls
+    r"|%[a-zA-Z]+\b"  # %s, %d, %i, %ls, %im, %ih, etc.
+    r"|\baUEC\b"  # currency
+    r"|\bSCU\b"  # unit
     r"|\\n"  # escape sequences
     r"|\{\d+\}"  # {0} positional
-    r"|<[^>]+>)"  # <tag>
+    r"|<[^\s<>]+>)"  # <tag> (no whitespace/newlines inside — real tags are short IDs)
 )
 
 # Matches SC fluff data: sequences of decimal numbers separated by spaces

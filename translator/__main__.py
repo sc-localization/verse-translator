@@ -5,11 +5,25 @@ import logging
 import sys
 from pathlib import Path
 
+from tqdm import tqdm
+
 from translator.backends.lmstudio import LMStudioBackend
 from translator.config import Config
 from translator.pipeline import run
 from translator.project_config import get_defaults, get_output_dir
 from translator.project_config import load as load_config
+
+
+class TqdmLoggingHandler(logging.Handler):
+    """Routes log records through tqdm.write() so they don't collide with
+    the progress bar's \\r updates (plain logging writes a newline mid-bar,
+    making console output look garbled/joined onto one line)."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            tqdm.write(self.format(record), file=sys.stderr)
+        except Exception:
+            self.handleError(record)
 
 
 def _build_backend(args: argparse.Namespace) -> LMStudioBackend:
@@ -51,10 +65,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    handler = TqdmLoggingHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        stream=sys.stderr,
+        handlers=[handler],
     )
 
     if toml:
@@ -73,7 +88,11 @@ def main() -> None:
         target_lang_code=args.target_lang_code,
     )
 
-    output = run(config, backend)
+    try:
+        output = run(config, backend)
+    except KeyboardInterrupt:
+        sys.exit(130)
+
     print(output)
 
 

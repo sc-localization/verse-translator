@@ -54,6 +54,10 @@ class LMStudioBackend(TranslatorBackend):
     def context_length(self) -> int:
         return self._context_length
 
+    @property
+    def max_output_tokens(self) -> int:
+        return self._max_output_tokens
+
     def ensure_model_loaded(self) -> None:
         """Check if model is loaded; load it if not. Blocks until ready."""
         loaded, ctx = self._model_status()
@@ -117,7 +121,7 @@ class LMStudioBackend(TranslatorBackend):
         except urllib.error.HTTPError as e:
             body_text = e.read().decode(errors="replace")
             raise RuntimeError(f"LM Studio failed to load model: {body_text}") from e
-        except urllib.error.URLError as e:
+        except (urllib.error.URLError, TimeoutError) as e:
             # A slow/unresponsive load endpoint (e.g. large model, busy
             # server) shouldn't abort the run — the poll loop right after
             # this call is the actual source of truth for "is it loaded".
