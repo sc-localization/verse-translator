@@ -4,7 +4,13 @@ import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from translator.backends.base import ContextTooLongError, TranslatorBackend
+import pytest
+
+from translator.backends.base import (
+    BatchSizeMismatchError,
+    ContextTooLongError,
+    TranslatorBackend,
+)
 from translator.cache import cache_path_for
 from translator.cache import load as load_cache
 from translator.config import Config
@@ -150,6 +156,62 @@ def test_malformed_json_is_retried_before_falling_back():
 
     assert backend.translate_batch.call_count == 2
     assert "ui_target=Цель: ~mission(foo)" in output_path.read_text(encoding="utf-8")
+
+
+def test_batch_size_mismatch_splits_instead_of_retrying():
+    # The model merged/split entries. At temperature 0 the same prompt gives
+    # the same broken answer, so the batch must be reshaped, not repeated.
+    config = _var_config(_write_tmp("a=Alpha\nb=Beta\n"))
+    config.retry_delay_seconds = 0
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = [
+        BatchSizeMismatchError("Expected 2 translations, got 3"),
+        ["Альфа"],  # left half
+        ["Бета"],  # right half
+    ]
+
+    output_path = run(config, backend)
+
+    assert backend.translate_batch.call_count == 3
+    assert [c[0][0] for c in backend.translate_batch.call_args_list] == [
+        ["Alpha", "Beta"],
+        ["Alpha"],
+        ["Beta"],
+    ]
+    content = output_path.read_text(encoding="utf-8")
+    assert "a=Альфа" in content
+    assert "b=Бета" in content
+
+
+def test_unsplittable_bad_response_keeps_source_without_crashing():
+    # A single entry the model never answers correctly must not abort the run
+    config = _var_config(_write_tmp(VAR_INI))
+    config.retry_delay_seconds = 0
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = BatchSizeMismatchError(
+        "Expected 1 translations, got 2"
+    )
+
+    output_path = run(config, backend)
+
+    assert backend.translate_batch.call_count == config.max_retries
+    assert "ui_target=Target: ~mission(foo)" in output_path.read_text(encoding="utf-8")
+    # not cached — the entry is retried on the next run
+    assert "ui_target" not in load_cache(cache_path_for(config.output_path))
+
+
+def test_backend_unreachable_still_aborts_the_run():
+    # Transport failures must not degrade into a full English copy
+    config = _var_config(_write_tmp(VAR_INI))
+    config.retry_delay_seconds = 0
+    backend = MagicMock(spec=TranslatorBackend)
+    backend.name = "mock"
+    backend.translate_batch.side_effect = ConnectionError("connection refused")
+
+    with pytest.raises(RuntimeError, match="failed after"):
+        run(config, backend)
 
 
 def test_fully_cached_run_still_bumps_version():
