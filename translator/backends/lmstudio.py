@@ -6,7 +6,11 @@ import time
 import urllib.error
 import urllib.request
 
-from translator.backends.base import ContextTooLongError, TranslatorBackend
+from translator.backends.base import (
+    BatchSizeMismatchError,
+    ContextTooLongError,
+    TranslatorBackend,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +203,15 @@ def _parse_json_response(output: str, expected_len: int) -> list[str]:
     if not isinstance(parsed, list) or not all(isinstance(v, str) for v in parsed):
         raise ValueError(f"Expected a JSON array of strings, got: {parsed!r}")
 
+    # Models routinely pad the array with a trailing empty string after a long
+    # entry. Only surplus *trailing* empties are dropped, so an intentionally
+    # empty translation in the middle of a batch is never lost.
+    while len(parsed) > expected_len and parsed[-1] == "":
+        parsed.pop()
+
     if len(parsed) != expected_len:
-        raise ValueError(f"Expected {expected_len} translations, got {len(parsed)}")
+        raise BatchSizeMismatchError(
+            f"Expected {expected_len} translations, got {len(parsed)}"
+        )
 
     return parsed

@@ -8,7 +8,11 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from translator.backends.base import ContextTooLongError, TranslatorBackend
+from translator.backends.base import (
+    BatchSizeMismatchError,
+    ContextTooLongError,
+    TranslatorBackend,
+)
 from translator.backends.lmstudio import LMStudioBackend
 from translator.batcher import DEFAULT_MAX_CHARS, make_batches
 from translator.cache import (
@@ -293,6 +297,40 @@ def _translate_with_retry(
             )
             translated = backend.translate_batch(values, system_prompt)
             return [_normalize_newlines(t) for t in translated]
+        except BatchSizeMismatchError as exc:
+            if len(values) > 1:
+                # The model merged or split entries. Temperature is 0, so an
+                # identical request gives an identical answer — reshape the
+                # batch instead of burning retries on the same prompt.
+                logger.warning(
+                    "Batch %d/%d: %s (%d entries), splitting in half",
+                    batch_idx + 1,
+                    total_batches,
+                    exc,
+                    len(values),
+                )
+                return _translate_halves(
+                    backend,
+                    values,
+                    system_prompt,
+                    max_retries,
+                    retry_delay,
+                    batch_idx,
+                    total_batches,
+                    max_chars,
+                )
+            # A single entry can't be split further here; retry, then fall back.
+            last_exc = exc
+            logger.warning(
+                "Batch %d/%d attempt %d failed: %s",
+                batch_idx + 1,
+                total_batches,
+                attempt,
+                exc,
+            )
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            continue
         except ContextTooLongError as exc:
             if len(values) == 1 and len(values[0]) <= max_chars:
                 # Not a real context overflow (the entry fits the budget) —
@@ -321,16 +359,15 @@ def _translate_with_retry(
                     total_batches,
                     max_chars,
                 )
-            half = len(values) // 2
             logger.warning(
                 "Batch %d/%d too long (%d entries), splitting in half",
                 batch_idx + 1,
                 total_batches,
                 len(values),
             )
-            left = _translate_with_retry(
+            return _translate_halves(
                 backend,
-                values[:half],
+                values,
                 system_prompt,
                 max_retries,
                 retry_delay,
@@ -338,17 +375,6 @@ def _translate_with_retry(
                 total_batches,
                 max_chars,
             )
-            right = _translate_with_retry(
-                backend,
-                values[half:],
-                system_prompt,
-                max_retries,
-                retry_delay,
-                batch_idx,
-                total_batches,
-                max_chars,
-            )
-            return left + right
         except Exception as exc:
             last_exc = exc
             logger.warning(
@@ -361,9 +387,64 @@ def _translate_with_retry(
             if attempt < max_retries:
                 time.sleep(retry_delay)
 
+    if isinstance(last_exc, _MODEL_OUTPUT_ERRORS):
+        # The model answered, it just answered badly. Losing a 22-hour run over
+        # one unparseable reply is worse than shipping this batch in English:
+        # dst == src is not cached, so the next run retries it (see run()).
+        logger.error(
+            "Batch %d/%d failed after %d attempts (%s) — keeping source text, "
+            "will retry on the next run",
+            batch_idx + 1,
+            total_batches,
+            max_retries,
+            last_exc,
+        )
+        return list(values)
+
+    # Transport/server failures (LM Studio down, model unloaded) would silently
+    # turn the whole run into a copy of the English file — abort instead.
     raise RuntimeError(
         f"Batch {batch_idx + 1}/{total_batches} failed after {max_retries} attempts"
     ) from last_exc
+
+
+# Errors that mean "bad model output" rather than "backend unreachable"
+_MODEL_OUTPUT_ERRORS = (BatchSizeMismatchError, ContextTooLongError, ValueError)
+
+
+def _translate_halves(
+    backend: TranslatorBackend,
+    values: list[str],
+    system_prompt: str,
+    max_retries: int,
+    retry_delay: float,
+    batch_idx: int,
+    total_batches: int,
+    max_chars: int,
+) -> list[str]:
+    """Translate a batch as two independent halves, preserving order."""
+    half = len(values) // 2
+    left = _translate_with_retry(
+        backend,
+        values[:half],
+        system_prompt,
+        max_retries,
+        retry_delay,
+        batch_idx,
+        total_batches,
+        max_chars,
+    )
+    right = _translate_with_retry(
+        backend,
+        values[half:],
+        system_prompt,
+        max_retries,
+        retry_delay,
+        batch_idx,
+        total_batches,
+        max_chars,
+    )
+    return left + right
 
 
 def _normalize_newlines(text: str) -> str:
