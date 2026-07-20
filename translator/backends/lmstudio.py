@@ -54,6 +54,10 @@ class LMStudioBackend(TranslatorBackend):
     def context_length(self) -> int:
         return self._context_length
 
+    @property
+    def max_output_tokens(self) -> int:
+        return self._max_output_tokens
+
     def ensure_model_loaded(self) -> None:
         """Check if model is loaded; load it if not. Blocks until ready."""
         loaded, ctx = self._model_status()

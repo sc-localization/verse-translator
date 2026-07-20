@@ -127,7 +127,7 @@ def run(config: Config, backend: TranslatorBackend) -> Path:
     if len(unique) < len(misses):
         print(f"  Dedup:    {len(misses)} entries → {len(unique)} unique strings\n")
 
-    max_chars = _max_chars_for(backend)
+    max_chars = _max_chars_for(backend, system_prompt)
     batches = make_batches(unique, config.batch_size, max_chars)
     total_batches = len(batches)
 
@@ -224,14 +224,27 @@ def _split_by_cache(
     return hits, misses
 
 
-def _max_chars_for(backend: TranslatorBackend) -> int:
+def _max_chars_for(backend: TranslatorBackend, system_prompt: str) -> int:
     """Source-chars budget per request, derived from the model context window.
 
-    ~0.75 chars per context token leaves room for the system prompt on the
-    input side and the (longer, worse-tokenized) translation on the output side.
+    System prompt tokens and the reserved output tokens share the SAME
+    context window as the input batch (LM Studio truncates generation at
+    the total context length, not at max_output_tokens) — so both must be
+    subtracted from the budget before converting the remainder to chars.
+    ~0.75 chars per token is a conservative (i.e. token-dense) estimate;
+    it still assumes prose-like content and can be optimistic for
+    numeric-heavy strings, hence the extra safety margin below.
     """
     ctx = getattr(backend, "context_length", None)
-    return int(ctx * 0.75) if ctx else DEFAULT_MAX_CHARS
+    if not ctx:
+        return DEFAULT_MAX_CHARS
+    max_output = getattr(backend, "max_output_tokens", ctx // 2)
+    system_prompt_tokens = len(system_prompt) // 3  # ~3 chars/token, conservative
+    safety_margin = 100
+    input_token_budget = max(
+        ctx - max_output - system_prompt_tokens - safety_margin, 256
+    )
+    return int(input_token_budget * 0.75)
 
 
 def _translate_with_retry(
