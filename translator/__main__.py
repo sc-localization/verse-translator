@@ -88,7 +88,11 @@ def main() -> None:
         target_lang_code=args.target_lang_code,
     )
 
-    output = run(config, backend)
+    try:
+        output = run(config, backend)
+    except KeyboardInterrupt:
+        sys.exit(130)
+
     print(output)
 
 
